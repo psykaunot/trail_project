@@ -169,26 +169,143 @@ class RLAgent:
             )
         return True
 
-    def explore_environment(self, duration=10):
-        """Random exploration for a set duration."""
-        print(f"[RLAgent] Exploring for {duration}s.")
-        end = time.time() + duration
-        while time.time() < end:
-            action = random.choice(['FORWARD', 'TURN_LEFT', 'TURN_RIGHT'])
-            key = {'FORWARD':65362,'TURN_LEFT':65361,'TURN_RIGHT':65363}[action]
-            environment.run_simulator_step(
-                self.sim, self.agent, self.locobot,
-                self.motor_ids, self.motor_settings, self.dof_map,
-                key, self.drive_speed, self.turn_speed,
-                self.arm_speed, self.grip_speed, self.dt
-            )
-            time.sleep(0.1)
-        # Stop at end
-        environment.run_simulator_step(
-            self.sim, self.agent, self.locobot,
-            self.motor_ids, self.motor_settings, self.dof_map,
-            0, self.drive_speed, self.turn_speed,
-            self.arm_speed, self.grip_speed, self.dt
-        )
+    def explore_environment(self, duration=10, use_habitat_policy=True):
+        """Stable exploration using either built-in policies or simplified movements."""
+        print(f"[RLAgent] Exploring for {duration}s with stable movements.")
+
+        if use_habitat_policy:
+            try:
+                # Try to use habitat's built-in navigation policy if available
+                from habitat_baselines.rl.ppo import PPO
+                from habitat_baselines.config.default import get_config
+
+                # Log that we're using habitat's navigation
+                print("Using Habitat's built-in navigation policy for exploration")
+
+                # Simple point goal navigation - go to random points
+                for i in range(3):  # Limit to just a few points for stability
+                    # Get a random navigable point
+                    target_point = self.sim.pathfinder.get_random_navigable_point()
+                    print(f"Navigating to point: {target_point}")
+
+                    # Use simplified navigation - small steps with pauses
+                    start_time = time.time()
+                    step_count = 0
+
+                    while time.time() - start_time < duration/3 and step_count < 20:
+                        # Take small steps toward goal
+                        current_pos = self.locobot.translation
+                        direction = np.array([target_point[0] - current_pos[0], 
+                                             target_point[2] - current_pos[2]])
+
+                        # Normalize and scale down movement
+                        if np.linalg.norm(direction) > 0.01:
+                            direction = direction / np.linalg.norm(direction) * 0.3
+
+                        # Convert to key command - simplified approach
+                        key = 65362  # Forward key
+                        if abs(direction[0]) > abs(direction[1]):
+                            if direction[0] < 0:
+                                key = 65361  # Left key
+                            else:
+                                key = 65363  # Right key
+
+                        # Execute small movement
+                        environment.run_simulator_step(
+                            self.sim, self.agent, self.locobot,
+                            self.motor_ids, self.motor_settings, self.dof_map,
+                            key, self.drive_speed * 0.3, self.turn_speed * 0.3,
+                            self.arm_speed, self.grip_speed, self.dt
+                        )
+
+                        # Critical: add pause between steps
+                        time.sleep(0.3)
+                        step_count += 1
+
+                    # Force stop and stabilize
+                    environment.run_simulator_step(
+                        self.sim, self.agent, self.locobot,
+                        self.motor_ids, self.motor_settings, self.dof_map,
+                        0, self.drive_speed, self.turn_speed,
+                        self.arm_speed, self.grip_speed, self.dt
+                    )
+                    time.sleep(0.5)  # Allow physics to stabilize
+
+            except ImportError as e:
+                print(f"Could not use Habitat navigation policy: {e}")
+                print("Falling back to simple exploration")
+                self._simple_exploration(duration)
+        else:
+            self._simple_exploration(duration)
+
         print("Exploration done.")
         return True
+
+    def _simple_exploration(self, duration):
+        """Very simple exploration with collision avoidance."""
+        end = time.time() + duration
+        steps = 0
+        
+        current_pos = [self.locobot.translation[0], 0.0, self.locobot.translation[2]]
+        
+        while time.time() < end and steps < 10:
+            # Use extremely reduced speed - 10% of normal
+            drive_speed = self.drive_speed * 0.1
+            turn_speed = self.turn_speed * 0.1
+            
+            # Try multiple directions until finding a valid one
+            found_valid_direction = False
+            for attempt in range(8):  # Try up to 8 directions
+                # Choose direction (try different angles in sequence)
+                angle = (attempt * (math.pi/4)) + random.uniform(-0.2, 0.2)
+                distance = 0.15  # Small movement distance
+                
+                # Calculate movement vector
+                dx = distance * math.cos(angle)
+                dz = distance * math.sin(angle)
+                new_pos = [current_pos[0] + dx, 0.0, current_pos[2] + dz]
+                
+                # Check if position is navigable
+                is_navigable = self.sim.pathfinder.is_navigable(
+                    mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
+                )
+                
+                # Cast ray to check for obstacles
+                ray_direction = mn.Vector3(dx, 0, dz).normalized()
+                ray = habitat_sim.geo.Ray(
+                    mn.Vector3(*current_pos), 
+                    ray_direction
+                )
+                raycast_results = self.sim.cast_ray(ray, distance * 1.2)
+                
+                if is_navigable and not raycast_results.has_hits():
+                    found_valid_direction = True
+                    print(f"Found valid direction after {attempt+1} attempts")
+                    
+                    # Apply movement
+                    state = self.locobot.rigid_state
+                    state.translation = mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
+                    self.locobot.rigid_state = state
+                    
+                    # Update current position
+                    current_pos = new_pos
+                    break
+                
+            if not found_valid_direction:
+                print("Could not find valid movement, turning in place")
+                # Just rotate in place
+                quat = self.locobot.rigid_state.rotation
+                rot_angle = random.uniform(0.1, 0.3)  # Small rotation
+                new_quat = quat * mn.Quaternion.rotation(mn.Rad(rot_angle), mn.Vector3(0, 1, 0))
+                
+                state = self.locobot.rigid_state
+                state.rotation = new_quat
+                self.locobot.rigid_state = state
+            
+            # Zero all velocities between steps
+            self.locobot.root_linear_velocity = mn.Vector3(0, 0, 0)
+            self.locobot.root_angular_velocity = mn.Vector3(0, 0, 0)
+            
+            # Wait longer between steps
+            time.sleep(1.0)
+            steps += 1

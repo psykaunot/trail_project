@@ -6,6 +6,7 @@ import numpy as np
 import time
 import json
 import magnum as mn
+import math
 from environment import setup_simulator, run_simulator_step, is_camera_movement_command, visualize_gripper_state
 from perception import Perception
 from controller import Controller, ControlMode
@@ -24,7 +25,7 @@ def ensure_same_channels(images):
 
 def main():
     # Initialize simulator, agent, and robot
-    sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_stabilizer = setup_simulator()
+    sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller = setup_simulator()
 
     # Debug: print initial state
     print(f"DEBUG: Initial robot position: {locobot.translation}")
@@ -55,7 +56,7 @@ def main():
     controller = Controller(llm_model="qwen2.5:7b")
     # Provide controller with access to robot control interfaces and speed parameters
     controller.set_robot_controls(
-        locobot, motor_ids, motor_settings, dof_map,
+        locobot, motor_ids, motor_settings, dof_map, sim=sim,
         drive_speed=DRIVE_SPEED, turn_speed=TURN_SPEED,
         arm_speed=ARM_SPEED, grip_speed=GRIP_SPEED
     )
@@ -170,8 +171,13 @@ def main():
                     print(f"Robot position: {locobot.translation}")
                     # Set key to None to prevent also processing it as a manual key
                     key = None
+                elif controller_command == "EXPLORE":  # Add this specific check
+                    # Use collision-aware exploration from environment module
+                    import environment
+                    environment.explore_with_collision_avoidance(sim, locobot, 0.2)
+                    key = None  # Prevent double processing
                 elif controller_command is not None:
-                    # Case 2: The controller provided a key press (e.g., an int code for an action)
+                    # Case 2: The controller provided a key press
                     key = controller_command
                     print(f"Executing controller-generated key command: {key}")
         except Exception as e:
@@ -188,7 +194,7 @@ def main():
                 sim, agent, locobot,
                 motor_ids, motor_settings, dof_map,
                 key, DRIVE_SPEED, TURN_SPEED,
-                ARM_SPEED, GRIP_SPEED, dt, camera_stabilizer
+                ARM_SPEED, GRIP_SPEED, dt, camera_controller
             )
         else:
             # **Idle or direct motor command path** (no discrete key input):

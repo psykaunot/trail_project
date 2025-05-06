@@ -12,6 +12,7 @@ import traceback
 from enum import Enum
 import habitat_sim
 
+
 class ControlMode(Enum):
     MANUAL = "manual"
     AUTONOMOUS = "autonomous"
@@ -63,12 +64,13 @@ class Controller:
         print(f"Controller initialized with LLM model: {llm_model}")
     
     def set_robot_controls(self, locobot, motor_ids, motor_settings, dof_map, 
-                          drive_speed=1.0, turn_speed=0.5, arm_speed=0.7, grip_speed=0.7):
+                          drive_speed=1.0, turn_speed=0.5, arm_speed=0.7, grip_speed=0.7, sim=None):
         """Set the robot control interfaces for direct motor control."""
         self.locobot = locobot
         self.motor_ids = motor_ids
         self.motor_settings = motor_settings
         self.dof_map = dof_map
+        self.sim = sim
         self.drive_speed = drive_speed
         self.turn_speed = turn_speed
         self.arm_speed = arm_speed
@@ -315,32 +317,58 @@ class Controller:
             self.progress = f"Grasp failed: {str(e)}"
             self.mode = ControlMode.MANUAL
     
+
     def _execute_exploration(self):
-        """Execute autonomous exploration sequence."""
+        """Execute exploration with visible movements."""
         try:
             self.mode = ControlMode.EXECUTING
             self.progress = "Exploring environment"
-            
-            for i in range(5):
-                action = self._plan_exploration_action()
-                if action:
-                    if isinstance(action, int):
-                        # If returning a key code, put it in the command queue
-                        self.command_queue.put(action)
-                    elif isinstance(action, dict):
-                        # If returning an action dict, put it in the command queue
-                        self.command_queue.put(action)
-                    time.sleep(1.0)  # Longer pause for exploration
-                    self.progress = f"Exploration step {i+1}/5"
-                
-            self.mode = ControlMode.MANUAL
-            self.progress = "Exploration complete"
-        except Exception as e:
-            print(f"Error during exploration: {e}")
-            traceback.print_exc()
-            self.progress = f"Exploration failed: {str(e)}"
-            self.mode = ControlMode.MANUAL
     
+            import environment
+            environment.set_exploration_active(True)
+    
+            print("Starting exploration with persistent movements")
+    
+            # Get initial position
+            initial_pos = self.locobot.translation
+            current_pos = [initial_pos[0], initial_pos[1], initial_pos[2]]
+    
+            for i in range(10):  # 10 movement steps
+                # Generate small random movement
+                dx = random.uniform(-0.15, 0.15)
+                dz = random.uniform(-0.15, 0.15)
+    
+                # Calculate new position
+                new_pos = [
+                    current_pos[0] + dx,
+                    0.0,  # Keep y at floor level
+                    current_pos[2] + dz
+                ]
+    
+                print(f"Moving from {current_pos} to {new_pos}")
+    
+                # Apply position directly
+                state = self.locobot.rigid_state
+                state.translation = mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
+                self.locobot.rigid_state = state
+    
+                # Zero all velocities
+                self.locobot.root_linear_velocity = mn.Vector3(0, 0, 0)
+                self.locobot.root_angular_velocity = mn.Vector3(0, 0, 0)
+    
+                # CRITICAL: Update reference position in environment to prevent snapping back
+                environment._reference_position = mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
+    
+                # Update current position for next step
+                current_pos = new_pos
+    
+                # Wait between moves
+                time.sleep(0.5)
+    
+            self.progress = "Exploration complete"
+        finally:
+            environment.set_exploration_active(False)
+
     def _plan_exploration_action(self):
         """Plan the next exploration action based on current state."""
         if self.debug:
