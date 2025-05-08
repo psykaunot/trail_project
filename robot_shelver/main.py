@@ -10,6 +10,10 @@ import math
 from environment import setup_simulator, run_simulator_step, is_camera_movement_command, visualize_gripper_state
 from perception import Perception
 from controller import Controller, ControlMode
+from rl_navigator import RLNavigator
+from navmesh_navigator import NavMeshNavigator
+from pick_place_demo import PickAndPlaceTask
+from object_spawner import ObjectSpawner
 
 def ensure_same_channels(images):
     """Ensure all images have 3 channels (convert grayscale or RGBA to BGR)."""
@@ -27,16 +31,17 @@ def main():
     # Initialize simulator, agent, and robot
     sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller = setup_simulator()
 
-    # Debug: print initial state
-    print(f"DEBUG: Initial robot position: {locobot.translation}")
-    print(f"DEBUG: Initial robot rotation: {locobot.rotation}")
+    object_spawner = ObjectSpawner(sim)
+    book_object = object_spawner.spawn_book()
+    print(f"Book object spawned: {book_object is not None}")
+    if book_object is not None:
+        print(f"Book position: {book_object.translation}")
+        print(f"Book motion type: {book_object.motion_type}")
 
     # Ensure all joint motors start with zero velocity to prevent initial jitter
     for lid, mid in motor_ids.items():
-        joint_name = locobot.get_link_joint_name(lid)
         motor_settings[lid].velocity_target = 0.0
         locobot.update_joint_motor(mid, motor_settings[lid])
-        print(f"DEBUG: Initial velocity for joint '{joint_name}' set to 0.0")
 
     # Take a small physics step to let the robot settle
     sim.step_physics(0.01)
@@ -61,6 +66,32 @@ def main():
         arm_speed=ARM_SPEED, grip_speed=GRIP_SPEED
     )
     controller.start()  # Start controller thread (for asynchronous commands)
+    
+    # Initialize RL navigator for path planning
+    rl_navigator = RLNavigator(
+        sim=sim,
+        agent=agent,
+        locobot=locobot, 
+        motor_ids=motor_ids,
+        motor_settings=motor_settings,
+        dof_map=dof_map,
+        drive_speed=DRIVE_SPEED,
+        turn_speed=TURN_SPEED,
+        dt=dt
+    )
+
+    navmesh_navigator = NavMeshNavigator(
+    sim=sim,
+    locobot=locobot,
+    motor_ids=motor_ids,
+    motor_settings=motor_settings,
+    dof_map=dof_map,
+    drive_speed=1.0,
+    turn_speed=0.5,
+    dt=dt
+    )
+
+
 
     # Create an OpenCV window for displaying the robot's view
     cv2.namedWindow("Robot View", cv2.WINDOW_NORMAL)
@@ -107,7 +138,7 @@ def main():
             break
 
         if key is not None and is_camera_movement_command(key):
-        # Block camera movement in manual mode unless controller specifically requested it
+            # Block camera movement in manual mode unless controller specifically requested it
             if not (controller.mode != ControlMode.MANUAL or key in controller.command_queue.queue):
                 print("Camera movement blocked - only LLM can control camera")
                 key = 0  # Nullify the key to prevent processing
@@ -167,11 +198,9 @@ def main():
                     # Step physics a few times to enact the direct motor command immediately
                     for _ in range(3):
                         sim.step_physics(dt)
-                    # Print updated robot position for debugging
-                    print(f"Robot position: {locobot.translation}")
                     # Set key to None to prevent also processing it as a manual key
                     key = None
-                elif controller_command == "EXPLORE":  # Add this specific check
+                elif controller_command == "EXPLORE":
                     # Use collision-aware exploration from environment module
                     import environment
                     environment.explore_with_collision_avoidance(sim, locobot, 0.2)
@@ -185,7 +214,6 @@ def main():
 
         # Step the simulation either with a manual key command or idle (no command)
         if key is not None:
-            # **Manual or controller key input path**:
             # Reset all velocity targets to 0 before applying new key action to avoid residual motion
             for s in motor_settings.values():
                 s.velocity_target = 0.0
@@ -197,7 +225,6 @@ def main():
                 ARM_SPEED, GRIP_SPEED, dt, camera_controller
             )
         else:
-            # **Idle or direct motor command path** (no discrete key input):
             # If we are truly idle (no controller dict command in this frame),
             # ensure the base wheels are fully stopped to avoid drifting
             if not isinstance(controller_command, dict):
@@ -216,15 +243,24 @@ def main():
             agent.scene_node.rotation    = rs.rotation
             # Capture sensor observations for this frame
             obs = sim.get_sensor_observations()
+
+
             top_img  = obs['top_rgb']
             rob_img  = obs['robot_rgb']    # front RGB camera image
             back_img = obs['back_rgb']
+            front_facing_img = obs['front_facing_rgb']
+
             # Label the views (for visualization purposes)
             cv2.putText(top_img,  'TOP',   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
             cv2.putText(rob_img,  'FRONT', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
             cv2.putText(back_img, 'BACK',  (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+            cv2.putText(front_facing_img, 'FRONT VIEW', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+            
+            # 2x2 grid layout
+            top_row = np.hstack((top_img, rob_img))
+            bottom_row = np.hstack((back_img, front_facing_img))
             # Combine the three camera views side by side
-            combined = np.hstack((top_img, rob_img, back_img))
+            combined = np.vstack((top_row, bottom_row))
 
         # Ensure the combined image is in BGR color (convert from RGBA if needed)
         if combined.shape[2] == 4:
@@ -270,7 +306,32 @@ def main():
             # Update controller with scene analysis data (if needed for decision making)
             controller.update_perception(scene_analysis=scene_data)
 
-        # --- Automated Control Commands (triggering LLM/VLM behaviors) ---
+        # --- RL Navigation Commands ---
+        elif key == ord('x') or key == ord('X'):
+            # Test wheel movement
+            print("\n=== TESTING MINIMAL WHEEL MOVEMENT ===")
+            rl_navigator.direct_wheel_test()
+
+        elif key == ord('p'):
+            pick_place = PickAndPlaceTask(sim, locobot, motor_ids, motor_settings, dof_map, book_object)
+            pick_place.execute_pick_and_place()
+
+        elif key == ord('c') or key == ord('C'):
+            # Navigate to position in front of robot
+            print("\n=== Testing RL Navigation to Forward Point ===")
+            current_pos = locobot.translation
+            # Get forward direction
+            forward = locobot.rotation.transform_vector(mn.Vector3(0, 0, -1))
+            # Create a point 2 meters ahead
+            target_point = current_pos + forward * 2.0
+            # Ensure it's navigable
+            if sim.pathfinder.is_navigable(target_point):
+                print(f"Navigating 2m forward to: {target_point}")
+                success = rl_navigator.navigate_to_point(target_point, verbose=False)
+                print(f"Navigation {'succeeded' if success else 'failed'}")
+            else:
+                print("Point 2m ahead is not navigable")
+
         elif key == ord('t') or key == ord('T'):
             # Target an object for navigation
             if objects_detected:
@@ -284,7 +345,18 @@ def main():
                     if 0 <= target_idx < len(objects_detected):
                         target_object = objects_detected[target_idx].get('name', 'Unknown')
                         print(f"Targeting object: {target_object}")
-                        controller.navigate_to_object(target_object)  # instruct controller to navigate
+                        
+                        # Use either the controller or RL navigator
+                        if controller.mode == ControlMode.MANUAL:
+                            # Use RL navigation directly
+                            print("Using RL Navigator for object approach")
+                            success = rl_navigator.navigate_to_object(objects_detected[target_idx])
+                            if not success:
+                                print("RL navigation failed, falling back to controller")
+                                controller.navigate_to_object(target_object)
+                        else:
+                            # Use the controller's approach
+                            controller.navigate_to_object(target_object)
                     else:
                         print("Invalid selection.")
                 except ValueError:
@@ -299,28 +371,22 @@ def main():
             else:
                 print("No target object selected to grasp.")
         elif key == ord('e') or key == ord('E'):
-            # Start autonomous exploration of the environment
-            print("\n=== Starting autonomous exploration ===")
-            result = controller.start_exploration()
-            print(f"Exploration started: {result}")
-            # Immediately plan and perform the first exploration action (for demo purposes)
-            next_action = controller._plan_exploration_action()
-            if next_action:
-                print(f"Initial exploration action: {next_action}")
-                if isinstance(next_action, dict):
-                    # If an action dict is returned (e.g., move forward or turn), apply it directly to motors
-                    action_type = next_action.get("type")
-                    if action_type == "FORWARD":
-                        motor_settings[dof_map["wheel_left_joint"]].velocity_target  = DRIVE_SPEED
-                        motor_settings[dof_map["wheel_right_joint"]].velocity_target = DRIVE_SPEED
-                        print(f"Applied initial FORWARD command (speed: {DRIVE_SPEED})")
-                    elif action_type == "TURN_LEFT":
-                        motor_settings[dof_map["wheel_left_joint"]].velocity_target  = -TURN_SPEED
-                        motor_settings[dof_map["wheel_right_joint"]].velocity_target =  TURN_SPEED
-                        print(f"Applied initial TURN_LEFT command (speed: {TURN_SPEED})")
-                    # Update motors immediately for the exploration action
-                    for lid, mid in motor_ids.items():
-                        locobot.update_joint_motor(mid, motor_settings[lid])
+            # Start physics-based exploration with fixed navigation
+            print("\n=== Starting physics-based exploration with robot-agent sync ===")
+            rl_navigator.physics_explore()
+
+        elif key == ord('n'):
+            current_pos = locobot.translation
+            forward = locobot.rotation.transform_vector(mn.Vector3(0, 0, -1))
+            # Use floor level y-coordinate (important!)
+            target_point = mn.Vector3(
+                current_pos.x + forward.x * 2.0,
+                0.159348,  # Use correct floor height from NavMesh
+                current_pos.z + forward.z * 2.0
+            )
+            print(f"Navigating to point: {target_point}")
+            navmesh_navigator.navigate_to(target_point)
+
         elif key == ord('z') or key == ord('Z'):
             # Return to manual control mode, stopping any autonomous behavior
             print("Switching back to manual control.")

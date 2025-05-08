@@ -27,8 +27,7 @@ _is_arm_moving = False
 _is_gripper_moving = False
 _camera_reference_transforms = {}
 _joint_limits_cache = {}  # Cache for joint limits to avoid repeated calls
-_debug_mode = True  # Set to True for detailed debugging output
-_last_link_print_time = 0 
+_debug_mode = False  # Set to False to disable detailed debugging output
 _exploration_active = False
 
 # Define CORRECT gripper limits globally so they can be used in multiple functions
@@ -120,90 +119,6 @@ def get_joint_limits(locobot, link_id):
             traceback.print_exc()
         return [-float('inf')], [float('inf')]
 
-# Print detailed information about all robot links and joints
-#def print_robot_links(locobot):
-#    """Print detailed information about all robot links and joints."""
-#    print("\n======== ROBOT LINK HIERARCHY ========")
-#    print(f"Robot has {locobot.num_links} links and {len(locobot.joint_positions)} DOFs")
-#    
-#    # Print base link info
-#    print("\nBASE LINK:")
-#    print(f"  Link ID: -1 (base)")
-#    try:
-#        print(f"  Link Name: {locobot.get_link_name(-1)}")
-#        print(f"  Position: {locobot.get_link_scene_node(-1).translation}")
-#        print(f"  Rotation: {locobot.get_link_scene_node(-1).rotation}")
-#    except Exception as e:
-#        print(f"  Error getting base link info: {e}")
-#    
-#    # Print all other links
-#    print("\nROBOT LINKS:")
-#    for link_id in locobot.get_link_ids():
-#        try:
-#            link_name = locobot.get_link_name(link_id)
-#            joint_name = locobot.get_link_joint_name(link_id)
-#            joint_type = locobot.get_link_joint_type(link_id)
-#            dofs = locobot.get_link_num_dofs(link_id)
-#            pos_offset = locobot.get_link_joint_pos_offset(link_id) if dofs > 0 else -1
-#            
-#            # Get joint limits if applicable
-#            limits_str = "N/A"
-#            if dofs > 0:
-#                try:
-#                    joint_limits = locobot.joint_position_limits
-#                    lower = joint_limits[0][pos_offset:pos_offset+dofs]
-#                    upper = joint_limits[1][pos_offset:pos_offset+dofs]
-#                    limits_str = f"{lower}, {upper}"
-#                    
-#                    # Cache the joint limits for later use
-#                    _joint_limits_cache[link_id] = (lower, upper)
-#                except Exception as e:
-#                    limits_str = f"Error getting limits: {e}"
-#            
-#            print(f"\n  Link ID: {link_id}")
-#            print(f"  Link Name: {link_name}")
-#            print(f"  Joint Name: {joint_name}")
-#            print(f"  Joint Type: {joint_type}")
-#            print(f"  DOFs: {dofs}")
-#            print(f"  Position Offset: {pos_offset}")
-#            print(f"  Joint Limits: {limits_str}")
-#            
-#            # Print current position and scene node info
-#            node = locobot.get_link_scene_node(link_id)
-#            print(f"  Scene Node Position: {node.translation}")
-#            print(f"  Scene Node Rotation: {node.rotation}")
-#            
-#            # Add flags for camera-related links
-#            if "camera" in link_name or "pan" in link_name or "tilt" in link_name:
-#                print(f"  ** CAMERA-RELATED LINK **")
-#        except Exception as e:
-#            print(f"  Error processing link {link_id}: {e}")
-#    
-#    # Print joint motors configuration
-#    print("\n======== JOINT MOTOR CONFIGURATION ========")
-#    try:
-#        motor_ids = locobot.existing_joint_motor_ids
-#        print(f"Robot has {len(motor_ids)} joint motors")
-#        
-#        for link_id, motor_id in motor_ids.items():
-#            try:
-#                settings = locobot.get_joint_motor_settings(motor_id)
-#                link_name = locobot.get_link_name(link_id)
-#                joint_name = locobot.get_link_joint_name(link_id)
-#                
-#                print(f"\n  Motor ID: {motor_id} (for Link ID: {link_id})")
-#                print(f"  Link/Joint Name: {link_name} / {joint_name}")
-#                print(f"  Position Gain: {settings.position_gain}")
-#                print(f"  Velocity Gain: {settings.velocity_gain}")
-#                print(f"  Max Impulse: {settings.max_impulse}")
-#                print(f"  Position Target: {settings.position_target}")
-#                print(f"  Velocity Target: {settings.velocity_target}")
-#            except Exception as e:
-#                print(f"  Error getting motor info for motor {motor_id}: {e}")
-#    except Exception as e:
-#        print(f"  Error accessing motor configuration: {e}")
-#    
-#    print("\n======== END ROBOT INFO ========\n")
 
 # Helper function to check if key is for arm or gripper command
 def is_arm_or_gripper_command(key):
@@ -543,42 +458,31 @@ def explore_with_collision_avoidance(sim, locobot, motor_ids, motor_settings, do
     print("Could not find valid movement direction")
     return False
 
-def calculate_wheel_velocities(dx, dz, speed_factor=1.0):
-    """Calculate differential wheel velocities for a desired movement direction."""
-    # Normalize direction vector
-    magnitude = math.sqrt(dx*dx + dz*dz)
-    if magnitude < 1e-6:
-        return 0.0, 0.0  # No movement
+def initialize_navmesh(sim):
+    """Initialize the NavMesh for the current scene for better navigation."""
     
-    dx_norm = dx / magnitude
-    dz_norm = dz / magnitude
+    # Configure NavMesh parameters
+    navmesh_settings = habitat_sim.NavMeshSettings()
+    navmesh_settings.set_defaults()
     
-    # Base speed with scaling factor
-    base_speed = 1.0 * speed_factor
+    # Adjust settings for LoCoBot
+    navmesh_settings.agent_radius = 0.3  # Match robot's physical radius
+    navmesh_settings.agent_height = 1.5  # Match robot's height
+    navmesh_settings.include_static_objects = True
+    navmesh_settings.cell_size = 0.05  # Higher detail for smoother paths
     
-    # For pure forward/backward motion, both wheels same direction
-    if abs(dx_norm) < 0.1:
-        # Forward or backward
-        direction = -1 if dz_norm < 0 else 1  # Negate because forward is -z in habitat
-        return base_speed * direction, base_speed * direction
-        
-    # For pure left/right rotation, wheels opposite direction
-    if abs(dz_norm) < 0.1:
-        # Left or right
-        direction = 1 if dx_norm > 0 else -1  # Positive dx is right
-        return base_speed * direction, -base_speed * direction
+    print("Generating NavMesh (this may take a moment)...")
+    success = sim.recompute_navmesh(sim.pathfinder, navmesh_settings)
     
-    # For diagonal movement, calculate differential steering
-    left_factor = -dz_norm + dx_norm * 0.5  # Forward + partial turning component
-    right_factor = -dz_norm - dx_norm * 0.5  # Forward - partial turning component
-    
-    # Scale to maintain consistent overall speed
-    max_factor = max(abs(left_factor), abs(right_factor))
-    if max_factor > 0:
-        left_factor = left_factor / max_factor * base_speed
-        right_factor = right_factor / max_factor * base_speed
-    
-    return left_factor, right_factor
+    if success:
+        print(f"NavMesh generation successful!")
+        print(f"NavMesh area: {sim.pathfinder.navigable_area}m²")
+        islands = sim.pathfinder.num_islands
+        print(f"Number of islands: {islands}")
+        return True
+    else:
+        print("WARNING: NavMesh generation failed!")
+        return False
 
 def setup_simulator():
     # Scene dataset config
@@ -611,11 +515,12 @@ def setup_simulator():
     front_depth.position = mn.Vector3(*cam_pos)
     front_depth.orientation = mn.Vector3(*cam_ori)
     back_cam = make_cam("back_rgb", (-1.0, 0.0, 0.8), (-np.pi/1.5, np.pi, np.pi/2))
+    front_facing_cam = make_cam("front_facing_rgb", (1.0, 0.0, 0.8), (np.pi/3, 0.0, np.pi/2))
 
     # Agent with sensors
     agent_cfg = habitat_sim.agent.AgentConfiguration()
-    agent_cfg.sensor_specifications = [top_cam, front_rgb, front_depth, back_cam]
-    
+    agent_cfg.sensor_specifications = [top_cam, front_rgb, front_depth, back_cam, front_facing_cam]
+
     # Create simulator
     try:
         sim = habitat_sim.Simulator(habitat_sim.Configuration(sim_cfg, [agent_cfg]))
@@ -651,9 +556,6 @@ def setup_simulator():
         traceback.print_exc()
         sys.exit(1)
     
-    # Print detailed information about all robot links and joints
-    #print_robot_links(locobot)
-
     # Set Enforcing joint limits
     locobot.auto_clamp_joint_limits = True
 
@@ -665,7 +567,7 @@ def setup_simulator():
         
         # Set initial state - properly in a single operation
         state = locobot.rigid_state
-        state.translation = mn.Vector3(1.0, 0.0, -2.0)
+        state.translation = mn.Vector3(0.4, 0.0, -2.0)
         upright_q = mn.Quaternion.rotation(Rad(-np.pi/2), mn.Vector3(1, 0, 0))
         yaw_q = mn.Quaternion.rotation(Rad(np.pi), mn.Vector3(0, 1, 0))
         state.rotation = yaw_q * upright_q
@@ -942,8 +844,46 @@ def setup_simulator():
     except Exception as e:
         print(f"Error in final gripper verification: {e}")
     
+    initialize_navmesh(sim)
+    debug_navmesh(sim)
     print("Robot initialization complete.")
     return sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller
+
+def debug_navmesh(sim):
+    """Debug the NavMesh generation and verify it's suitable for navigation."""
+    if not sim.pathfinder.is_loaded:
+        print("ERROR: NavMesh not loaded")
+        return False
+    
+    print("\n=== NAVMESH DEBUG INFO ===")
+    print(f"NavMesh area: {sim.pathfinder.navigable_area}m²")
+    
+    # Get the number of islands
+    islands = sim.pathfinder.num_islands
+    print(f"Number of islands: {islands}")
+    
+    # Try to get several random points to verify sampling works
+    successes = 0
+    for i in range(5):
+        try:
+            point = sim.pathfinder.get_random_navigable_point()
+            print(f"Random point {i+1}: {point}")
+            successes += 1
+        except Exception as e:
+            print(f"Failed to get random point {i+1}: {e}")
+    
+    if successes == 0:
+        print("CRITICAL: Could not sample any random points!")
+        return False
+    
+    # Check if current robot position is navigable
+    robot_pos = sim.robots[0].translation if hasattr(sim, 'robots') else None
+    if robot_pos:
+        is_navigable = sim.pathfinder.is_navigable(robot_pos)
+        print(f"Robot position ({robot_pos}) is {'navigable' if is_navigable else 'NOT navigable'}")
+    
+    print("=== END NAVMESH DEBUG ===\n")
+    return successes > 0
 
 
 # Add this to the top of environment.py
@@ -988,10 +928,10 @@ def enforce_robot_position_constraints(locobot, reference_position=None, max_y_d
     if reference_position is not None:
         y_drift = abs(current_pos[1] - reference_position[1])
         if y_drift > 1.0:
-            print(f"ℹ️ [INFO] Y-drift: {y_drift:.3f}m (normal in simulation)")
+            print(f"[INFO] Y-drift: {y_drift:.3f}m (normal in simulation)")
     
     if current_pos[1] < -0.3:
-        print(f"ℹ️ [INFO] Robot below floor: {current_pos[1]:.3f}m (normal in simulation)")
+        print(f"[INFO] Robot below floor: {current_pos[1]:.3f}m (normal in simulation)")
     
     # Never apply corrections, just monitor
     return False
@@ -1026,13 +966,6 @@ def run_simulator_step(
             print(f"Error processing camera command: {e}")
             is_camera_cmd = False
     
-    ## Debug logging for key presses
-    #if _debug_mode and key is not None and key != 0 and key != -1:
-    #    print(f"\n▓▓▓▓ NEW STEP - KEY {key} PRESSED ▓▓▓▓")
-    #    if key >= 32 and key <= 126:
-    #        print(f"Key: '{chr(key)}'")
-    #elif _debug_mode and key == -1:
-    #    print(f"\n▓▓▓▓ NEW STEP - KEY -1 PRESSED ▓▓▓▓")
     
     # Update arm/gripper movement state based on key
     if key is not None and key != 0 and key != -1:
@@ -1040,25 +973,25 @@ def run_simulator_step(
             _last_command_time = current_time
             _is_gripper_moving = True
             if _debug_mode:
-                print(f"🤖 GRIPPER COMMAND: {chr(key)}")
+                print(f" GRIPPER COMMAND: {chr(key)}")
         elif key in [ord('u'), ord('j'), ord('i'), ord('k'),
                      ord('o'), ord('l'), ord('p'), ord(';'),
                      ord('['), ord(']'), ord('n'), ord('m')]:
             _last_command_time = current_time
             _is_arm_moving = True
             if _debug_mode:
-                print(f"🦾 ARM COMMAND: {chr(key)}")
+                print(f" ARM COMMAND: {chr(key)}")
     
     # Auto-stop after timeout (0.5s for faster stabilization)
     if (_is_arm_moving or _is_gripper_moving) and current_time - _last_command_time > 0.5:
         if _is_arm_moving:
             _is_arm_moving = False
             if _debug_mode:
-                print("⏱️ ARM MOTION TIMEOUT - SWITCHING TO STATIC MODE")
+                print(" ARM MOTION TIMEOUT - SWITCHING TO STATIC MODE")
         if _is_gripper_moving:
             _is_gripper_moving = False
             if _debug_mode:
-                print("⏱️ GRIPPER MOTION TIMEOUT - SWITCHING TO STATIC MODE")
+                print(" GRIPPER MOTION TIMEOUT - SWITCHING TO STATIC MODE")
     
     # Define arm and gripper joints
     arm_joints = ["waist", "shoulder", "elbow", "forearm_roll", "wrist_angle", "wrist_rotate"]
@@ -1088,88 +1021,6 @@ def run_simulator_step(
     locobot.root_linear_velocity = mn.Vector3(0, 0, 0)
     locobot.root_angular_velocity = mn.Vector3(0, 0, 0)
     
-    # ---- ARM STABILIZATION ----
-    #if not _is_arm_moving:
-    #    if _debug_mode:
-    #        print("\n┌────── ARM STABILITY CONTROL ──────┐")
-    #    
-    #    for joint_name in arm_joints:
-    #        if joint_name in dof_map:
-    #            joint_id = dof_map[joint_name]
-    #            if joint_id in motor_ids:
-    #                current_pos = arm_current_positions[joint_name]
-    #                
-    #                motor_settings[joint_id] = phys.JointMotorSettings(
-    #                    position_target=current_pos,
-    #                    position_gain=500.0,
-    #                    velocity_target=0.0,
-    #                    velocity_gain=100.0,
-    #                    max_impulse=1000.0
-    #                )
-    #                
-    #                locobot.update_joint_motor(motor_ids[joint_id], motor_settings[joint_id])
-    #                
-    #                if _debug_mode:
-    #                    print(f"  {joint_name:12}: Locked at {current_pos:.4f}")
-    #    
-    #    if _debug_mode:
-    #        print("└────────────────────────────────────┘")
-    #
-    ## ---- GRIPPER STABILITY CONTROL ----
-    #if not _is_gripper_moving:
-    #    if _debug_mode:
-    #        print("\n┌────── GRIPPER STABILITY CONTROL ────┐")
-    #
-    #    for joint_name in ["left_finger", "right_finger"]:
-    #        if joint_name in dof_map:
-    #            joint_id = dof_map[joint_name]
-    #            if joint_id in motor_ids:
-    #                current_pos = gripper_current_positions[joint_name]
-    #
-    #                # Clamp to limits
-    #                if joint_name == "left_finger":
-    #                    if current_pos < LEFT_FINGER_MIN:
-    #                        current_pos = LEFT_FINGER_MIN
-    #                        if _debug_mode:
-    #                            print(f"  {joint_name:12}: Position clamped to min limit {LEFT_FINGER_MIN:.4f}")
-    #                    elif current_pos > LEFT_FINGER_MAX:
-    #                        current_pos = LEFT_FINGER_MAX
-    #                        if _debug_mode:
-    #                            print(f"  {joint_name:12}: Position clamped to max limit {LEFT_FINGER_MAX:.4f}")
-    #                elif joint_name == "right_finger":
-    #                    if current_pos < RIGHT_FINGER_MIN:
-    #                        current_pos = RIGHT_FINGER_MIN
-    #                        if _debug_mode:
-    #                            print(f"  {joint_name:12}: Position clamped to min limit {RIGHT_FINGER_MIN:.4f}")
-    #                    elif current_pos > RIGHT_FINGER_MAX:
-    #                        current_pos = RIGHT_FINGER_MAX
-    #                        if _debug_mode:
-    #                            print(f"  {joint_name:12}: Position clamped to max limit {RIGHT_FINGER_MAX:.4f}")
-    #
-    #                # Create stiff motor setting
-    #                motor_settings[joint_id] = phys.JointMotorSettings(
-    #                    position_target=current_pos,
-    #                    position_gain=600.0,
-    #                    velocity_target=0.0,
-    #                    velocity_gain=120.0,
-    #                    max_impulse=1200.0
-    #                )
-    #
-    #                # Apply motor update
-    #                locobot.update_joint_motor(motor_ids[joint_id], motor_settings[joint_id])
-    #
-    #                # Force joint position directly
-    #                pos_offset = locobot.get_link_joint_pos_offset(joint_id)
-    #                if pos_offset >= 0:
-    #                    joint_positions = locobot.joint_positions
-    #                    joint_positions[pos_offset] = current_pos
-    #                    locobot.joint_positions = joint_positions
-    #
-    #                if _debug_mode:
-    #                    print(f"  {joint_name:12}: Locked at {current_pos:.4f}")
-    #
-    #    if _debug_mode:
-    #        print("└────────────────────────────────────┘")
     
     # ---- PROCESS ARM MOVEMENT COMMANDS ----
     arm_map = {
@@ -1221,12 +1072,12 @@ def run_simulator_step(
     if key == ord('g') and _is_gripper_moving:  # Open gripper
         set_gripper_state(locobot, motor_ids, motor_settings, dof_map, "open")
         if _debug_mode:
-            print(f"👐 OPENING GRIPPER: Left={SAFE_LEFT_OPEN:.4f}, Right={SAFE_RIGHT_OPEN:.4f}")
+            print(f" OPENING GRIPPER: Left={SAFE_LEFT_OPEN:.4f}, Right={SAFE_RIGHT_OPEN:.4f}")
                 
     elif key == ord('h') and _is_gripper_moving:  # Close gripper
         set_gripper_state(locobot, motor_ids, motor_settings, dof_map, "closed")
         if _debug_mode:
-            print(f"✊ CLOSING GRIPPER: Left={SAFE_LEFT_CLOSED:.4f}, Right={SAFE_RIGHT_CLOSED:.4f}")
+            print(f" CLOSING GRIPPER: Left={SAFE_LEFT_CLOSED:.4f}, Right={SAFE_RIGHT_CLOSED:.4f}")
     
     # ---- DRIVING COMMANDS ----
     is_driving = False
@@ -1321,7 +1172,6 @@ def run_simulator_step(
         # Use different settings for exploration mode
         if _exploration_active:
             num_substeps = 4  # Fewer steps when in exploration mode
-            #print("Using reduced physics steps for exploration stability")
         else:
             num_substeps = 12
             
@@ -1480,14 +1330,18 @@ def run_simulator_step(
         top_img = obs['top_rgb']
         rob_img = obs['robot_rgb']
         back_img = obs['back_rgb']
+        front_facing_img = obs['front_facing_rgb']
         
         # Add view labels
         cv2.putText(top_img, 'TOP', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
         cv2.putText(rob_img, 'FRONT', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
         cv2.putText(back_img, 'BACK', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
-        
-        # Combine views
-        combined = np.hstack((top_img, rob_img, back_img))
+        cv2.putText(front_facing_img, 'FRONT VIEW', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+
+        top_row = np.hstack((top_img, rob_img))
+        bottom_row = np.hstack((back_img, front_facing_img))
+        combined = np.vstack((top_row, bottom_row))
+
         
     except Exception as e:
         print(f" Error capturing observations: {e}")
@@ -1503,34 +1357,5 @@ def run_simulator_step(
         tilt_id = dof_map["tilt"]
         final_pan_pos = get_joint_position(locobot, pan_id)
         final_tilt_pos = get_joint_position(locobot, tilt_id)
-        #if abs(final_pan_pos - initial_pan_pos) > 1e-6 or abs(final_tilt_pos - initial_tilt_pos) > 1e-6:
-        #    print(f"CAMERA DRIFT DETECTED: Pan={final_pan_pos:.6f} (Δ={final_pan_pos-initial_pan_pos:.6f}), Tilt={final_tilt_pos:.6f} (Δ={final_tilt_pos-initial_tilt_pos:.6f})")
-
-    # Add to environment.py at the end of run_simulator_step function
-#global _last_link_print_time
-#current_time = time.time()
-#if current_time - _last_link_print_time > 5.0:
-#    _last_link_print_time = current_time
-#    print("\n=== ALL ROBOT LINKS ===")
-#    for link_id in locobot.get_link_ids():
-#        try:
-#            link_name = locobot.get_link_name(link_id)
-#            node = locobot.get_link_scene_node(link_id)
-#            # Print more details for links that might be causing visual issues
-#            print(f"Link {link_id}: {link_name}")
-#            print(f"  - Position: {node.translation}")
-#            print(f"  - Rotation: {node.rotation}")
-#            
-#            # Get more details about the link
-#            joint_type = locobot.get_link_joint_type(link_id)
-#            print(f"  - Joint Type: {joint_type}")
-#            
-#            # Check if this joint has any visual elements
-#            dofs = locobot.get_link_num_dofs(link_id)
-#            print(f"  - DOFs: {dofs}")
-#        except Exception as e:
-#            print(f"Error getting info for link {link_id}: {e}")
-#    print("================================================================================================================\n")
-            
 
     return obs, combined

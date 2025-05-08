@@ -327,8 +327,6 @@ class Controller:
             import environment
             environment.set_exploration_active(True)
     
-            print("Starting exploration with persistent movements")
-    
             # Get initial position
             initial_pos = self.locobot.translation
             current_pos = [initial_pos[0], initial_pos[1], initial_pos[2]]
@@ -344,8 +342,6 @@ class Controller:
                     0.0,  # Keep y at floor level
                     current_pos[2] + dz
                 ]
-    
-                print(f"Moving from {current_pos} to {new_pos}")
     
                 # Apply position directly
                 state = self.locobot.rigid_state
@@ -371,16 +367,11 @@ class Controller:
 
     def _plan_exploration_action(self):
         """Plan the next exploration action based on current state."""
-        if self.debug:
-            print("Planning next exploration action")
-        
         try:
             # If we have detected objects, try to navigate to one
             if self.detected_objects and random.random() < 0.3:
                 obj = random.choice(self.detected_objects)
                 self.target_object = obj.get("name", "unknown object")
-                if self.debug:
-                    print(f"Exploring toward object: {self.target_object}")
                 return 65362  # Forward key - move toward objects
             
             # Otherwise, choose a random movement
@@ -393,13 +384,9 @@ class Controller:
                 65363,  # Right key
             ]
             action = random.choice(action_choices)
-            if self.debug:
-                action_name = action if isinstance(action, int) else action["type"]
-                print(f"Selected random exploration action: {action_name}")
             return action
         except Exception as e:
             print(f"Error planning exploration action: {e}")
-            traceback.print_exc()
             return None
     
     def _query_llm(self, prompt):

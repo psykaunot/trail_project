@@ -114,6 +114,9 @@ class CameraController:
 
     def _print_debug_info(self):
         """Print debug information about the camera controller."""
+        if not self.debug:
+            return
+            
         print("\n=== Camera Controller Debug Info ===")
         print(f"Tracking {len(self.link_ids)} camera links:")
         for name, id in self.link_ids.items():
@@ -171,11 +174,8 @@ class CameraController:
         if not changed:
             return False
         
-        if changed:
-            # Add this distinctive logging with clear markers
-            print("\n=== CAMERA MOVEMENT DETECTED ===")
-            print(f"Pan: {self.pan_target:.4f}, Tilt: {self.tilt_target:.4f}")
-            print("=================================\n")
+        if changed and self.debug:
+            print(f"Camera moved to Pan: {self.pan_target:.4f}, Tilt: {self.tilt_target:.4f}")
             
         # Apply to pan motor
         if "pan" in self.dof_map:

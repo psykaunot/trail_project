@@ -167,9 +167,6 @@ class CameraStabilizer:
             # Force the node to exactly match reference transform
             node.translation = ref["translation"]
             node.rotation = ref["rotation"]
-            
-            if self.debug:
-                print(f"Enforcing static position for {link_name}")
 
     def stabilize(self, sim, dt: float, is_camera_cmd: bool) -> None:
         """

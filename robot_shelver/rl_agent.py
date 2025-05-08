@@ -1,33 +1,21 @@
 #!/usr/bin/env python3
 import os
 import time
-import math
-import random
 import numpy as np
-import torch
 import magnum as mn
 import habitat_sim
-import environment
+from habitat_sim.nav import GreedyGeodesicFollower, ShortestPath
 
 class RLAgent:
-    def __init__(
-        self,
-        sim,
-        agent,
-        locobot,
-        motor_ids,
-        motor_settings,
-        dof_map,
-        drive_speed=1.2,
-        turn_speed=0.5,
-        arm_speed=0.7,
-        grip_speed=0.7,
-        dt=1/30.0,
-        nav_model_path=None,
-        grasp_model_path=None,
-        place_model_path=None
-    ):
-        """Load pretrained RL policies for navigation and manipulation."""
+    """
+    Class for reinforcement learning agent navigation using Habitat's PathFinder.
+    This implements the approach shown in the rigid object tutorial:
+    https://aihabitat.org/docs/habitat-sim/rigid-object-tutorial.html#continuous-control-on-navmesh
+    """
+    
+    def __init__(self, sim, agent, locobot, motor_ids, motor_settings, dof_map, 
+                 drive_speed=1.0, turn_speed=0.5, dt=1/30.0):
+        """Initialize the RL Agent."""
         self.sim = sim
         self.agent = agent
         self.locobot = locobot
@@ -36,276 +24,240 @@ class RLAgent:
         self.dof_map = dof_map
         self.drive_speed = drive_speed
         self.turn_speed = turn_speed
-        self.arm_speed = arm_speed
-        self.grip_speed = grip_speed
         self.dt = dt
-
-        # Load navigation policy if available
-        self.nav_policy = None
-        if nav_model_path and os.path.exists(nav_model_path):
+        
+        # Initialize path follower
+        self.pathfinder = sim.pathfinder
+        self.path_follower = None
+        
+        if self.pathfinder is not None and self.pathfinder.is_loaded:
+            print("Initializing GreedyGeodesicFollower for navigation...")
             try:
-                self.nav_policy = torch.jit.load(nav_model_path)
-                self.nav_policy.eval()
-                print(f"Loaded navigation model from {nav_model_path}")
+                # Create the GreedyGeodesicFollower using the agent's action space
+                self.path_follower = GreedyGeodesicFollower(
+                    pathfinder=self.pathfinder,
+                    agent=self.agent,
+                    forward_key="move_forward",
+                    left_key="turn_left",
+                    right_key="turn_right"
+                )
+                print("GreedyGeodesicFollower initialized successfully")
             except Exception as e:
-                print(f"Failed to load nav model: {e}")
+                print(f"Error initializing GreedyGeodesicFollower: {e}")
+                self.path_follower = None
         else:
-            print("Navigation model not provided/found. Using heuristic navigation.")
-
-        # Load grasp policy if available
-        self.grasp_policy = None
-        if grasp_model_path and os.path.exists(grasp_model_path):
-            try:
-                self.grasp_policy = torch.jit.load(grasp_model_path)
-                self.grasp_policy.eval()
-                print(f"Loaded grasp model from {grasp_model_path}")
-            except Exception as e:
-                print(f"Failed to load grasp model: {e}")
-        else:
-            print("Grasp model not provided/found. Using heuristic grasp.")
-
-        # Load place policy if available
-        self.place_policy = None
-        if place_model_path and os.path.exists(place_model_path):
-            try:
-                self.place_policy = torch.jit.load(place_model_path)
-                self.place_policy.eval()
-                print(f"Loaded place model from {place_model_path}")
-            except Exception as e:
-                print(f"Failed to load place model: {e}")
-        else:
-            print("Place model not provided/found.")
-
-    def navigate_to(self, target_position, max_steps=500):
-        """Navigate the robot to the given target position."""
-        if target_position is None:
-            print("No target position provided for navigation.")
+            print("WARNING: NavMesh not loaded. Path follower cannot be initialized.")
+            
+    def navigate_to_point(self, target_position, verbose=True):
+        """
+        Navigate to a target position using the GreedyGeodesicFollower.
+        
+        Args:
+            target_position: 3D target position to navigate to
+            verbose: Whether to print navigation progress
+            
+        Returns:
+            bool: Success or failure of navigation
+        """
+        if self.path_follower is None:
+            print("ERROR: Path follower not initialized. Cannot navigate.")
             return False
-        print(f"[RLAgent] Navigating to: {target_position}")
-
-        steps = 0
-        success = False
-        while steps < max_steps:
-            # Compute relative vector
-            pos = self.locobot.translation
-            delta = np.array(target_position) - np.array([pos.x, pos.y, pos.z])
-            dist = np.linalg.norm(delta[[0, 2]])
-
-            # Determine forward direction using quaternion
-            quat = self.locobot.rigid_state.rotation
-            fwd = quat.transformVector(mn.Vector3(0.0, 0.0, -1.0))
-            forward_dir = np.array([fwd.x, fwd.z])
-            n = np.linalg.norm(forward_dir)
-            if n > 1e-8:
-                forward_dir /= n
-            else:
-                forward_dir = np.array([0.0, -1.0])
-
-            # Goal direction
-            goal_dir = np.array([delta[0], delta[2]])
-            gn = np.linalg.norm(goal_dir)
-            if gn > 1e-8:
-                goal_dir /= gn
-
-            # Angle and side
-            dot = np.clip(np.dot(forward_dir, goal_dir), -1.0, 1.0)
-            ang = math.acos(dot)
-            side = forward_dir[0]*goal_dir[1] - forward_dir[1]*goal_dir[0]
-
-            # Decide action
-            if dist < 0.2:
-                action = 'STOP'
-            elif ang > 0.1:
-                action = 'TURN_LEFT' if side < 0 else 'TURN_RIGHT'
-            else:
-                action = 'FORWARD'
-
-            # Map to key
-            key_map = {'FORWARD': 65362, 'BACKWARD': 65364,
-                       'TURN_LEFT': 65361, 'TURN_RIGHT': 65363}
-            key = key_map.get(action, 0)
-            if action == 'STOP':
-                success = True
-                break
-
-            environment.run_simulator_step(
-                self.sim, self.agent, self.locobot,
-                self.motor_ids, self.motor_settings, self.dof_map,
-                key, self.drive_speed, self.turn_speed,
-                self.arm_speed, self.grip_speed, self.dt
-            )
-            steps += 1
-
-        # Final stop
-        environment.run_simulator_step(
-            self.sim, self.agent, self.locobot,
-            self.motor_ids, self.motor_settings, self.dof_map,
-            0, self.drive_speed, self.turn_speed,
-            self.arm_speed, self.grip_speed, self.dt
-        )
-        print(f"Navigation {'succeeded' if success else 'failed'} in {steps} steps.")
-        return success
-
-    def grasp_object(self, name=None, max_steps=200):
-        """Heuristic grasp if no policy provided."""
-        print(f"[RLAgent] Grasping: {name}")
-        for step in range(max_steps):
-            if step < 50:
-                key = ord('k')  # shoulder down
-            elif step < 100:
-                key = ord('l')  # elbow down
-            elif step < 150:
-                key = ord('h')  # close gripper
-            else:
-                key = 0
-                print("Grasp complete or timed out.")
-                break
-
-            environment.run_simulator_step(
-                self.sim, self.agent, self.locobot,
-                self.motor_ids, self.motor_settings, self.dof_map,
-                key, self.drive_speed, self.turn_speed,
-                self.arm_speed, self.grip_speed, self.dt
-            )
-        return True
-
-    def explore_environment(self, duration=10, use_habitat_policy=True):
-        """Stable exploration using either built-in policies or simplified movements."""
-        print(f"[RLAgent] Exploring for {duration}s with stable movements.")
-
-        if use_habitat_policy:
-            try:
-                # Try to use habitat's built-in navigation policy if available
-                from habitat_baselines.rl.ppo import PPO
-                from habitat_baselines.config.default import get_config
-
-                # Log that we're using habitat's navigation
-                print("Using Habitat's built-in navigation policy for exploration")
-
-                # Simple point goal navigation - go to random points
-                for i in range(3):  # Limit to just a few points for stability
-                    # Get a random navigable point
-                    target_point = self.sim.pathfinder.get_random_navigable_point()
-                    print(f"Navigating to point: {target_point}")
-
-                    # Use simplified navigation - small steps with pauses
-                    start_time = time.time()
-                    step_count = 0
-
-                    while time.time() - start_time < duration/3 and step_count < 20:
-                        # Take small steps toward goal
-                        current_pos = self.locobot.translation
-                        direction = np.array([target_point[0] - current_pos[0], 
-                                             target_point[2] - current_pos[2]])
-
-                        # Normalize and scale down movement
-                        if np.linalg.norm(direction) > 0.01:
-                            direction = direction / np.linalg.norm(direction) * 0.3
-
-                        # Convert to key command - simplified approach
-                        key = 65362  # Forward key
-                        if abs(direction[0]) > abs(direction[1]):
-                            if direction[0] < 0:
-                                key = 65361  # Left key
-                            else:
-                                key = 65363  # Right key
-
-                        # Execute small movement
-                        environment.run_simulator_step(
-                            self.sim, self.agent, self.locobot,
-                            self.motor_ids, self.motor_settings, self.dof_map,
-                            key, self.drive_speed * 0.3, self.turn_speed * 0.3,
-                            self.arm_speed, self.grip_speed, self.dt
-                        )
-
-                        # Critical: add pause between steps
-                        time.sleep(0.3)
-                        step_count += 1
-
-                    # Force stop and stabilize
-                    environment.run_simulator_step(
-                        self.sim, self.agent, self.locobot,
-                        self.motor_ids, self.motor_settings, self.dof_map,
-                        0, self.drive_speed, self.turn_speed,
-                        self.arm_speed, self.grip_speed, self.dt
-                    )
-                    time.sleep(0.5)  # Allow physics to stabilize
-
-            except ImportError as e:
-                print(f"Could not use Habitat navigation policy: {e}")
-                print("Falling back to simple exploration")
-                self._simple_exploration(duration)
+            
+        if verbose:
+            print(f"Navigating to position: {target_position}")
+            
+        # Convert target to Vector3 if needed
+        if isinstance(target_position, (list, tuple, np.ndarray)):
+            goal_pos = mn.Vector3(target_position[0], target_position[1], target_position[2])
         else:
-            self._simple_exploration(duration)
-
-        print("Exploration done.")
-        return True
-
-    def _simple_exploration(self, duration):
-        """Very simple exploration with collision avoidance."""
-        end = time.time() + duration
-        steps = 0
+            goal_pos = target_position
+            
+        # Check if target is navigable
+        if not self.pathfinder.is_navigable(goal_pos):
+            if verbose:
+                print(f"Target position {goal_pos} is not navigable")
+            # Try to find closest navigable point
+            closest_point = self.pathfinder.snap_point(goal_pos)
+            if (closest_point - goal_pos).length() > 2.0:
+                if verbose:
+                    print(f"No navigable point found near target")
+                return False
+            if verbose:
+                print(f"Using closest navigable point: {closest_point}")
+            goal_pos = closest_point
         
-        current_pos = [self.locobot.translation[0], 0.0, self.locobot.translation[2]]
+        # Check if path exists
+        start_pos = self.locobot.translation
+        path = ShortestPath()
+        path.requested_start = start_pos
+        path.requested_end = goal_pos
         
-        while time.time() < end and steps < 10:
-            # Use extremely reduced speed - 10% of normal
-            drive_speed = self.drive_speed * 0.1
-            turn_speed = self.turn_speed * 0.1
+        found_path = self.pathfinder.find_path(path)
+        if not found_path:
+            if verbose:
+                print(f"No path found from {start_pos} to {goal_pos}")
+            return False
             
-            # Try multiple directions until finding a valid one
-            found_valid_direction = False
-            for attempt in range(8):  # Try up to 8 directions
-                # Choose direction (try different angles in sequence)
-                angle = (attempt * (math.pi/4)) + random.uniform(-0.2, 0.2)
-                distance = 0.15  # Small movement distance
+        if verbose:
+            print(f"Path found with length: {path.geodesic_distance}m")
+            
+        try:
+            # Get the sequence of actions to follow the path
+            action_list = self.path_follower.find_path(goal_pos)
+            
+            if len(action_list) == 0:
+                if verbose:
+                    print("Path follower returned empty action list")
+                return False
                 
-                # Calculate movement vector
-                dx = distance * math.cos(angle)
-                dz = distance * math.sin(angle)
-                new_pos = [current_pos[0] + dx, 0.0, current_pos[2] + dz]
+            if verbose:
+                print(f"Generated {len(action_list)} actions to follow path")
                 
-                # Check if position is navigable
-                is_navigable = self.sim.pathfinder.is_navigable(
-                    mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
-                )
-                
-                # Cast ray to check for obstacles
-                ray_direction = mn.Vector3(dx, 0, dz).normalized()
-                ray = habitat_sim.geo.Ray(
-                    mn.Vector3(*current_pos), 
-                    ray_direction
-                )
-                raycast_results = self.sim.cast_ray(ray, distance * 1.2)
-                
-                if is_navigable and not raycast_results.has_hits():
-                    found_valid_direction = True
-                    print(f"Found valid direction after {attempt+1} attempts")
+            # Execute each action in the sequence
+            for i, action in enumerate(action_list):
+                if verbose and i % 5 == 0:  # Print progress every 5 actions
+                    print(f"Executing action {i+1}/{len(action_list)}: {action}")
                     
-                    # Apply movement
-                    state = self.locobot.rigid_state
-                    state.translation = mn.Vector3(new_pos[0], new_pos[1], new_pos[2])
-                    self.locobot.rigid_state = state
+                # Convert action to motor commands
+                self._apply_action_to_motors(action)
+                
+                # Step physics
+                for _ in range(3):  # Take multiple physics steps per action
+                    self.sim.step_physics(self.dt)
                     
-                    # Update current position
-                    current_pos = new_pos
-                    break
+                # Update agent position to match robot
+                self.agent.scene_node.translation = self.locobot.translation
+                self.agent.scene_node.rotation = self.locobot.rotation
                 
-            if not found_valid_direction:
-                print("Could not find valid movement, turning in place")
-                # Just rotate in place
-                quat = self.locobot.rigid_state.rotation
-                rot_angle = random.uniform(0.1, 0.3)  # Small rotation
-                new_quat = quat * mn.Quaternion.rotation(mn.Rad(rot_angle), mn.Vector3(0, 1, 0))
+                # Check if we've reached the goal
+                current_pos = self.locobot.translation
+                dist = (current_pos - goal_pos).length()
                 
-                state = self.locobot.rigid_state
-                state.rotation = new_quat
-                self.locobot.rigid_state = state
+                if dist < 0.5:  # Within 0.5m of target
+                    if verbose:
+                        print(f"Reached target (distance: {dist:.2f}m)")
+                    return True
+                    
+            # Stop the robot
+            self._stop_motors()
             
-            # Zero all velocities between steps
-            self.locobot.root_linear_velocity = mn.Vector3(0, 0, 0)
-            self.locobot.root_angular_velocity = mn.Vector3(0, 0, 0)
+            # Final distance check
+            current_pos = self.locobot.translation
+            dist = (current_pos - goal_pos).length()
+            success = dist < 0.5
             
-            # Wait longer between steps
-            time.sleep(1.0)
-            steps += 1
+            if verbose:
+                print(f"Navigation {'succeeded' if success else 'failed'}")
+                print(f"Final distance to target: {dist:.2f}m")
+                
+            return success
+            
+        except habitat_sim.errors.GreedyFollowerError as e:
+            if verbose:
+                print(f"GreedyFollower error: {e}")
+            return False
+        except Exception as e:
+            if verbose:
+                print(f"Error during navigation: {e}")
+                import traceback
+                traceback.print_exc()
+            return False
+    
+    def explore_environment(self, num_points=3, max_distance=3.0, verbose=True):
+        """
+        Explore the environment by navigating to random navigable points.
+        
+        Args:
+            num_points: Number of random points to visit
+            max_distance: Maximum distance for random points
+            verbose: Whether to print progress
+            
+        Returns:
+            bool: Success or failure of exploration
+        """
+        if self.pathfinder is None or not self.pathfinder.is_loaded:
+            if verbose:
+                print("Pathfinder not available. Cannot explore.")
+            return False
+            
+        if verbose:
+            print(f"Starting exploration with {num_points} random points")
+            
+        # Get current position
+        current_pos = self.locobot.translation
+        
+        # Visit random points
+        points_visited = 0
+        for i in range(num_points):
+            if verbose:
+                print(f"\nExploring point {i+1}/{num_points}")
+                
+            # Get random navigable point near current position
+            try:
+                target_point = self.pathfinder.get_random_navigable_point_near(
+                    circle_center=current_pos,
+                    radius=max_distance
+                )
+            except Exception as e:
+                if verbose:
+                    print(f"Error getting random point: {e}")
+                try:
+                    # Fallback to any random point
+                    target_point = self.pathfinder.get_random_navigable_point()
+                except:
+                    if verbose:
+                        print("Could not get any random navigable point")
+                    continue
+                    
+            # Navigate to the point
+            success = self.navigate_to_point(target_point, verbose=verbose)
+            
+            if success:
+                points_visited += 1
+                # Update current position
+                current_pos = self.locobot.translation
+            
+            # Small pause between navigation targets
+            time.sleep(0.5)
+            
+        if verbose:
+            print(f"\nExploration completed. Visited {points_visited}/{num_points} points")
+            
+        return points_visited > 0
+    
+    def _apply_action_to_motors(self, action):
+        """
+        Apply a navigation action to the robot's motors.
+        
+        Args:
+            action: Action name (move_forward, turn_left, turn_right)
+        """
+        # Clear previous motor velocities
+        for lid in self.motor_settings:
+            self.motor_settings[lid].velocity_target = 0.0
+        
+        # Apply appropriate motor commands based on action
+        if action == "move_forward":
+            if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+                self.motor_settings[self.dof_map["wheel_left_joint"]].velocity_target = self.drive_speed
+                self.motor_settings[self.dof_map["wheel_right_joint"]].velocity_target = self.drive_speed
+        elif action == "turn_left":
+            if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+                self.motor_settings[self.dof_map["wheel_left_joint"]].velocity_target = -self.turn_speed
+                self.motor_settings[self.dof_map["wheel_right_joint"]].velocity_target = self.turn_speed
+        elif action == "turn_right":
+            if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+                self.motor_settings[self.dof_map["wheel_left_joint"]].velocity_target = self.turn_speed
+                self.motor_settings[self.dof_map["wheel_right_joint"]].velocity_target = -self.turn_speed
+                
+        # Update all motors
+        for lid, mid in self.motor_ids.items():
+            self.locobot.update_joint_motor(mid, self.motor_settings[lid])
+    
+    def _stop_motors(self):
+        """Stop all motors."""
+        for lid in self.motor_settings:
+            self.motor_settings[lid].velocity_target = 0.0
+            
+        for lid, mid in self.motor_ids.items():
+            self.locobot.update_joint_motor(mid, self.motor_settings[lid])
