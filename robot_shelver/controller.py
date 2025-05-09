@@ -25,7 +25,7 @@ class ControlMode(Enum):
 class Controller:
     """LLM-powered robot controller for autonomous operation."""
     
-    def __init__(self, llm_model="qwen2.5:7b", api_url="http://localhost:11434/api/chat", debug=True):
+    def __init__(self, llm_model="qwen3:8b", api_url="http://localhost:11434/api/chat", debug=True):
         """Initialize the controller with the specified LLM model."""
         self.llm_model = llm_model
         self.api_url = api_url
@@ -390,7 +390,7 @@ class Controller:
             return None
     
     def _query_llm(self, prompt):
-        """Query the LLM for planning or decision making."""
+        """Query the LLM for planning or decision making with reduced verbosity."""
         try:
             # Prepare the API request payload
             payload = {
@@ -409,8 +409,393 @@ class Controller:
             
             # Extract the response content
             response_text = result.get("message", {}).get("content", "")
-            return response_text
+            
+            # Clean up verbose responses
+            import re
+            # Remove "think" sections if present
+            cleaned_response = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
+            
+            # If response is too long, extract just the decision
+            if len(cleaned_response) > 100:
+                # For camera mission, extract PAN and TILT values
+                pan_match = re.search(r"PAN:\s*([-+]?\d*\.\d+|\d+)", cleaned_response)
+                tilt_match = re.search(r"TILT:\s*([-+]?\d*\.\d+|\d+)", cleaned_response)
+                if pan_match and tilt_match:
+                    return f"PAN: {pan_match.group(1)} TILT: {tilt_match.group(1)}"
+                
+                # For other missions, extract just the action
+                for action in ["TURN_LEFT", "TURN_RIGHT", "MOVE_FORWARD", "APPROACH_BOOK", "GRAB_BOOK"]:
+                    if action in cleaned_response:
+                        return action
+            
+            return cleaned_response
             
         except Exception as e:
             print(f"Error querying LLM: {e}")
             return "Error: Could not get response from language model"
+        
+    def _scan_room_for_books(self):
+        """Scan the room for books using the camera."""
+        self.progress = "Scanning room for books"
+        books_found = []
+
+        # Initialize camera controller if needed
+        if not hasattr(self, 'camera_controller') and self.locobot:
+            from camera_controller import CameraController
+            self.camera_controller = CameraController(
+                self.locobot, self.motor_ids, self.motor_settings, self.dof_map
+            )
+
+        # Scan positions (left, center, right)
+        scan_positions = [
+            (-1.0, -0.2),  # Left side
+            (0.0, -0.2),   # Center 
+            (1.0, -0.2),   # Right side
+        ]
+
+        for pan, tilt in scan_positions:
+            self.progress = f"Scanning position: pan={pan:.1f}, tilt={tilt:.1f}"
+
+            # Move camera to scanning position
+            if hasattr(self, 'camera_controller'):
+                self.camera_controller.move_camera(
+                    pan_delta=pan - self.camera_controller.pan_target, 
+                    tilt_delta=tilt - self.camera_controller.tilt_target
+                )
+
+            # Pause to let camera settle
+            time.sleep(1.0)
+
+            # Get current image
+            if self.sim:
+                obs = self.sim.get_sensor_observations()
+                front_img = obs['robot_rgb'].copy()
+
+                # Use perception module to find books
+                if hasattr(self, 'perception'):
+                    books = self.perception.find_books_in_image(front_img)
+                    books_found.extend(books)
+                    print(f"Found {len(books)} books at position {pan:.1f}, {tilt:.1f}")
+                else:
+                    from perception import Perception
+                    self.perception = Perception()
+                    self.perception.set_camera_params(self.sim, "robot_rgb")
+
+        print(f"Total books found: {len(books_found)}")
+        return books_found
+
+    def _approach_book(self, book):
+        """Navigate to the detected book."""
+        if 'bbox' not in book:
+            print("Book detection missing bounding box information")
+            return False
+
+        # Get 3D world position from the 2D bounding box
+        book_pos = self.perception.get_book_position(book['bbox'])
+        if book_pos is None:
+            print("Could not determine book position in 3D space")
+            return False
+
+        print(f"Book position: {book_pos}")
+        self.progress = f"Moving to book at {book_pos}"
+
+        # Use NavMesh navigator to move to the book (stopping short for grasping)
+        from navmesh_navigator import NavMeshNavigator
+        navigator = NavMeshNavigator(
+            self.sim, self.locobot, self.motor_ids, self.motor_settings, self.dof_map
+        )
+
+        # Calculate approach position (slightly back from book for better grasping)
+        approach_distance = 0.5  # meters
+        direction = (book_pos - self.locobot.translation).normalized()
+        approach_pos = book_pos - direction * approach_distance
+        approach_pos.y = 0.0  # Ensure we're at floor level
+
+        # Navigate to approach position
+        success = navigator.navigate_to(approach_pos)
+        return success
+
+    def _grab_book(self):
+        """Execute the book grasping sequence."""
+        self.progress = "Grasping book"
+
+        # Create pick & place task
+        from pick_place_demo import PickAndPlaceTask
+        pick_task = PickAndPlaceTask(
+            self.sim, self.locobot, self.motor_ids, self.motor_settings, self.dof_map
+        )
+
+        # Execute the pick sequence with camera guidance
+        pick_task.camera_guided_grasp()
+        self.progress = "Book grabbed successfully"
+        return True
+
+    def find_book_mission(self):
+        """Start the book finding mission."""
+        print("MISSION STARTED: Looking for books...")
+        self.mode = ControlMode.EXECUTING
+        self.task_description = "Find and pick book"
+
+        # Call our scanning function
+        books = self._scan_room_for_books()
+        if not books:
+            print("No books found!")
+            self.mode = ControlMode.MANUAL
+            self.progress = "Mission failed: No books found"
+            return False
+
+        # Move to the book
+        self.progress = "Moving to book"
+        target_book = books[0]  # Pick first book found
+        success = self._approach_book(target_book)
+
+        # Pick up the book
+        if success:
+            success = self._grab_book()
+            if success:
+                self.progress = "Mission complete: Book found and grabbed"
+            else:
+                self.progress = "Mission failed: Could not grab book"
+        else:
+            self.progress = "Mission failed: Could not reach book"
+
+        self.mode = ControlMode.MANUAL
+        return success
+    
+
+    def llm_guided_book_mission(self):
+        """Use LLM to guide a step-by-step book finding mission"""
+        print("🤖 Starting LLM-guided book mission")
+        self.mode = ControlMode.EXECUTING
+        self.task_description = "Find and grab book using LLM"
+        self.progress = "Analyzing scene"
+
+        # Get current view
+        obs = self.sim.get_sensor_observations()
+        front_img = obs['robot_rgb'].copy()
+
+        # Run object detection first
+        from perception import Perception
+        perception = Perception()
+        detected_objects = perception.detect_objects(front_img)
+        books = [obj for obj in detected_objects if obj.get('name', '').lower() == 'book']
+
+        # Prepare context for LLM with detection results
+        book_context = ""
+        if books:
+            book_context = f"I detected {len(books)} books in the current view."
+        else:
+            book_context = "I don't see any books in the current view."
+
+        # Ask LLM for next step
+        prompt = f"""You are controlling a robot to find and grab a book. {book_context}
+
+    Current robot position: {self.locobot.translation}
+    Current view: Front camera
+
+    What should the robot do next? Choose ONE action:
+    1. TURN_LEFT - Turn the entire robot left to search
+    2. TURN_RIGHT - Turn the entire robot right to search
+    3. MOVE_FORWARD - Move robot forward
+    4. APPROACH_BOOK - Move closer to visible book
+    5. GRAB_BOOK - Position arm and grab visible book
+
+    Reply with ONLY the action name and a brief explanation."""
+
+        # Send to LLM
+        response = self._query_llm(prompt)
+        print(f"LLM guidance: {response}")
+
+        # Extract action based on LLM response
+        action = None
+        if "TURN_LEFT" in response:
+            self._execute_turn_left()
+            action = "Turning left to search"
+        elif "TURN_RIGHT" in response:
+            self._execute_turn_right()
+            action = "Turning right to search"
+        elif "MOVE_FORWARD" in response:
+            self._execute_move_forward()
+            action = "Moving forward"
+        elif "APPROACH_BOOK" in response and books:
+            self._execute_approach_book(books[0])
+            action = "Approaching book"
+        elif "GRAB_BOOK" in response and books:
+            self._execute_grab_book()
+            action = "Grabbing book"
+        else:
+            action = "No action taken - continuing search"
+            self._execute_turn_right()  # Default action
+
+        self.progress = action
+        self.mode = ControlMode.MANUAL
+        return True
+
+    def _execute_turn_left(self):
+        """Execute a left turn using wheel motors"""
+        if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+            left_id = self.dof_map["wheel_left_joint"]
+            right_id = self.dof_map["wheel_right_joint"]
+
+            # Set wheel velocities for turning
+            self.motor_settings[left_id].velocity_target = -self.turn_speed
+            self.motor_settings[right_id].velocity_target = self.turn_speed
+
+            # Apply settings
+            self.locobot.update_joint_motor(self.motor_ids[left_id], self.motor_settings[left_id])
+            self.locobot.update_joint_motor(self.motor_ids[right_id], self.motor_settings[right_id])
+
+            # Step physics for a second
+            import time
+            t_end = time.time() + 1.0
+            while time.time() < t_end:
+                self.sim.step_physics(1/60.0)
+
+    def _execute_turn_right(self):
+        """Execute a right turn using wheel motors"""
+        if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+            left_id = self.dof_map["wheel_left_joint"]
+            right_id = self.dof_map["wheel_right_joint"]
+
+            # Set wheel velocities for turning
+            self.motor_settings[left_id].velocity_target = self.turn_speed
+            self.motor_settings[right_id].velocity_target = -self.turn_speed
+
+            # Apply settings
+            self.locobot.update_joint_motor(self.motor_ids[left_id], self.motor_settings[left_id])
+            self.locobot.update_joint_motor(self.motor_ids[right_id], self.motor_settings[right_id])
+
+            # Step physics for a second
+            import time
+            t_end = time.time() + 1.0
+            while time.time() < t_end:
+                self.sim.step_physics(1/60.0)
+
+    def _execute_move_forward(self):
+        """Execute a forward movement using wheel motors"""
+        if "wheel_left_joint" in self.dof_map and "wheel_right_joint" in self.dof_map:
+            left_id = self.dof_map["wheel_left_joint"]
+            right_id = self.dof_map["wheel_right_joint"]
+
+            # Set wheel velocities for moving forward
+            self.motor_settings[left_id].velocity_target = self.drive_speed
+            self.motor_settings[right_id].velocity_target = self.drive_speed
+
+            # Apply settings
+            self.locobot.update_joint_motor(self.motor_ids[left_id], self.motor_settings[left_id])
+            self.locobot.update_joint_motor(self.motor_ids[right_id], self.motor_settings[right_id])
+
+            # Step physics for a second
+            import time
+            t_end = time.time() + 1.0
+            while time.time() < t_end:
+                self.sim.step_physics(1/60.0)
+
+    def camera_guided_book_search(self):
+        """Use camera pan/tilt to scan for books with LLM guidance"""
+        print("📷 Starting camera-guided book search")
+        self.mode = ControlMode.EXECUTING
+        self.task_description = "Find book using camera"
+        self.progress = "Preparing camera"
+
+        # First, ensure we have access to camera joints
+        if "pan" not in self.dof_map or "tilt" not in self.dof_map:
+            print("ERROR: Camera pan/tilt joints not found")
+            return False
+
+        # Get joint IDs
+        pan_id = self.dof_map["pan"]
+        tilt_id = self.dof_map["tilt"]
+
+        # Function to directly move camera joints
+        def move_camera(pan_pos, tilt_pos):
+            print(f"Moving camera to pan={pan_pos:.2f}, tilt={tilt_pos:.2f}")
+
+            # Override camera position using joint positions
+            joint_positions = self.locobot.joint_positions
+            pan_offset = self.locobot.get_link_joint_pos_offset(pan_id)
+            tilt_offset = self.locobot.get_link_joint_pos_offset(tilt_id)
+
+            if pan_offset >= 0 and tilt_offset >= 0:
+                # Apply new positions
+                joint_positions[pan_offset] = pan_pos
+                joint_positions[tilt_offset] = tilt_pos
+                self.locobot.joint_positions = joint_positions
+
+                # Set them repeatedly over time to prevent stabilization
+                import time
+                for _ in range(10):
+                    # Re-apply positions several times
+                    self.locobot.joint_positions = joint_positions
+                    # Step physics briefly
+                    self.sim.step_physics(1/60.0)
+                    time.sleep(0.05)
+
+                print(f"Camera moved to: pan={pan_pos:.2f}, tilt={tilt_pos:.2f}")
+                return True
+            return False
+
+        # Get current view
+        obs = self.sim.get_sensor_observations()
+        front_img = obs['robot_rgb'].copy()
+
+        # Run object detection
+        from perception import Perception
+        perception = Perception()
+        detected_objects = perception.detect_objects(front_img)
+        books = [obj for obj in detected_objects if obj.get('name', '').lower() == 'book']
+
+        # Prepare context for LLM
+        book_context = ""
+        if books:
+            book_context = f"I detected {len(books)} books in the current view."
+        else:
+            book_context = "I don't see any books in the current view."
+
+        # Ask LLM for camera movement
+        prompt = f"""You are controlling a robot's camera to find books. {book_context}
+
+    You control the camera's pan (left/right) and tilt (up/down) motors.
+    - Pan range: -1.0 (far left) to 1.0 (far right)
+    - Tilt range: -0.5 (down) to 0.1 (up)
+
+    Current camera orientation:
+    - Pan: 0.0 (center)
+    - Tilt: -0.26 (slightly down)
+
+    What camera position should I move to next? Respond with ONLY:
+    PAN: [value] TILT: [value]
+    """
+
+        # Send to LLM
+        response = self._query_llm(prompt)
+        print(f"LLM camera guidance: {response}")
+
+        # Extract pan/tilt values from response
+        import re
+        pan_match = re.search(r"PAN:\s*([-+]?\d*\.\d+|\d+)", response)
+        tilt_match = re.search(r"TILT:\s*([-+]?\d*\.\d+|\d+)", response)
+
+        # Apply camera movement if values found
+        if pan_match and tilt_match:
+            try:
+                pan_value = float(pan_match.group(1))
+                tilt_value = float(tilt_match.group(1))
+
+                # Clamp to valid ranges
+                pan_value = max(-1.0, min(1.0, pan_value))
+                tilt_value = max(-0.5, min(0.1, tilt_value))
+
+                # Move camera
+                success = move_camera(pan_value, tilt_value)
+                if success:
+                    self.progress = f"Moved camera to pan={pan_value:.2f}, tilt={tilt_value:.2f}"
+                else:
+                    self.progress = "Failed to move camera"
+            except ValueError:
+                self.progress = "Invalid camera values from LLM"
+        else:
+            self.progress = "Could not extract camera values from LLM response"
+
+        self.mode = ControlMode.MANUAL
+        return True

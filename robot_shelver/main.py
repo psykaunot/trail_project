@@ -7,13 +7,21 @@ import time
 import json
 import magnum as mn
 import math
+import threading
+
 from environment import setup_simulator, run_simulator_step, is_camera_movement_command, visualize_gripper_state
-from perception import Perception
 from controller import Controller, ControlMode
-from rl_navigator import RLNavigator
-from navmesh_navigator import NavMeshNavigator
-from pick_place_demo import PickAndPlaceTask
-from object_spawner import ObjectSpawner
+from perception.perception import Perception
+from navigation.rl_navigator import RLNavigator
+from navigation.navmesh_navigator import NavMeshNavigator
+from manipulation.pick_place_demo import PickAndPlaceTask
+from utils.object_spawner import ObjectSpawner
+from utils.link_monitor import start_link_monitor
+from utils.video_recorder import VideoRecorder
+
+# Initialize video recorder
+video_recorder = VideoRecorder(output_path="book_mission.mp4", fps=30)
+
 
 def ensure_same_channels(images):
     """Ensure all images have 3 channels (convert grayscale or RGBA to BGR)."""
@@ -31,6 +39,11 @@ def main():
     # Initialize simulator, agent, and robot
     sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller = setup_simulator()
 
+    # After drawing the display view:
+    if hasattr(video_recorder, 'is_recording') and video_recorder.is_recording:
+        video_recorder.add_frame(display_view)
+
+    #monitor_thread = start_link_monitor(locobot) #Use to print all therobot links' position and rotation vectors every 5 sec.
     object_spawner = ObjectSpawner(sim)
     book_object = object_spawner.spawn_book()
     print(f"Book object spawned: {book_object is not None}")
@@ -45,9 +58,9 @@ def main():
 
     # Take a small physics step to let the robot settle
     sim.step_physics(0.01)
-
+    
     # Initialize perception module (Visual Language Model, etc.)
-    perception = Perception(model_name="llava-phi3")
+    perception = Perception(model_name="llava-phi")
     perception.set_camera_params(sim, "robot_rgb")  # Use front RGB camera
 
     # Define motion speed constants
@@ -58,7 +71,7 @@ def main():
     dt = 1.0 / 30.0  # simulation timestep (30 FPS)
 
     # Initialize controller (for LLM/VLM-based autonomous control)
-    controller = Controller(llm_model="qwen2.5:7b")
+    controller = Controller(llm_model="qwen3:8b")
     # Provide controller with access to robot control interfaces and speed parameters
     controller.set_robot_controls(
         locobot, motor_ids, motor_settings, dof_map, sim=sim,
@@ -139,7 +152,13 @@ def main():
 
         if key is not None and is_camera_movement_command(key):
             # Block camera movement in manual mode unless controller specifically requested it
-            if not (controller.mode != ControlMode.MANUAL or key in controller.command_queue.queue):
+            if key in [ord('r'), ord('R')]:
+                if video_recorder.is_recording:
+                    video_recorder.stop_recording()
+                else:
+                    video_recorder.start_recording()
+            
+            elif not (controller.mode != ControlMode.MANUAL or key in controller.command_queue.queue):
                 print("Camera movement blocked - only LLM can control camera")
                 key = 0  # Nullify the key to prevent processing
 
@@ -244,7 +263,6 @@ def main():
             # Capture sensor observations for this frame
             obs = sim.get_sensor_observations()
 
-
             top_img  = obs['top_rgb']
             rob_img  = obs['robot_rgb']    # front RGB camera image
             back_img = obs['back_rgb']
@@ -286,17 +304,10 @@ def main():
             )
             print(f"\nVLM Description: {description}\n")
             last_description = description  # store the description for display
+
         elif key == ord('b') or key == ord('B'):
-            # Detect objects in the front view
-            print("\nDetecting objects in view...")
-            objects_detected = perception.detect_objects(front_img)
-            show_object_detections = True  # trigger display of detection results
-            print(f"Detected {len(objects_detected)} objects:")
-            for obj in objects_detected:
-                name = obj.get('name', 'Unknown')
-                desc = obj.get('description', '')
-                print(f" - {name}: {desc}")
-            # Update controller with perception results (for potential autonomous actions)
+            print("🚀 Starting Book Finding Mission!")
+            controller.find_book_mission()
             controller.update_perception(front_img, objects_detected)
         elif key == ord('s') or key == ord('S'):
             # Analyze overall scene structure/relationships
@@ -316,53 +327,13 @@ def main():
             pick_place = PickAndPlaceTask(sim, locobot, motor_ids, motor_settings, dof_map, book_object)
             pick_place.execute_pick_and_place()
 
-        elif key == ord('c') or key == ord('C'):
-            # Navigate to position in front of robot
-            print("\n=== Testing RL Navigation to Forward Point ===")
-            current_pos = locobot.translation
-            # Get forward direction
-            forward = locobot.rotation.transform_vector(mn.Vector3(0, 0, -1))
-            # Create a point 2 meters ahead
-            target_point = current_pos + forward * 2.0
-            # Ensure it's navigable
-            if sim.pathfinder.is_navigable(target_point):
-                print(f"Navigating 2m forward to: {target_point}")
-                success = rl_navigator.navigate_to_point(target_point, verbose=False)
-                print(f"Navigation {'succeeded' if success else 'failed'}")
-            else:
-                print("Point 2m ahead is not navigable")
+        elif key == ord('r') or key == ord('R'):
+             controller.camera_guided_book_search()
 
         elif key == ord('t') or key == ord('T'):
-            # Target an object for navigation
-            if objects_detected:
-                # List detected objects for user selection
-                print("\nSelect an object to target (enter its number):")
-                for i, obj in enumerate(objects_detected):
-                    print(f"  {i}: {obj.get('name', 'Unknown')}")
-                target_idx = input("Object number: ")
-                try:
-                    target_idx = int(target_idx)
-                    if 0 <= target_idx < len(objects_detected):
-                        target_object = objects_detected[target_idx].get('name', 'Unknown')
-                        print(f"Targeting object: {target_object}")
-                        
-                        # Use either the controller or RL navigator
-                        if controller.mode == ControlMode.MANUAL:
-                            # Use RL navigation directly
-                            print("Using RL Navigator for object approach")
-                            success = rl_navigator.navigate_to_object(objects_detected[target_idx])
-                            if not success:
-                                print("RL navigation failed, falling back to controller")
-                                controller.navigate_to_object(target_object)
-                        else:
-                            # Use the controller's approach
-                            controller.navigate_to_object(target_object)
-                    else:
-                        print("Invalid selection.")
-                except ValueError:
-                    print("Invalid input (please enter a number).")
-            else:
-                print("No objects detected to target.")
+            print("Testing camera movement...")
+            camera_controller.test_direct_camera_control()
+
         elif key == ord('y') or key == ord('Y'):
             # Attempt to grasp the currently targeted object
             if target_object:
@@ -370,6 +341,10 @@ def main():
                 controller.grasp_object(target_object)
             else:
                 print("No target object selected to grasp.")
+
+        elif key == ord('l') or key == ord('L'):
+            controller.llm_guided_book_mission()
+
         elif key == ord('e') or key == ord('E'):
             # Start physics-based exploration with fixed navigation
             print("\n=== Starting physics-based exploration with robot-agent sync ===")
@@ -397,6 +372,15 @@ def main():
         display_view = perception.draw_robot_coordinates(combined, robot_position, robot_rotation)
 
         display_view = visualize_gripper_state(display_view, locobot, dof_map)
+
+        # After drawing the display view in the main loop (around line ~350):
+        if video_recorder.is_recording:
+            # Make sure to add the current frame to the recording
+            video_recorder.add_frame(display_view)
+            # Add a small "REC" indicator in the corner
+            cv2.circle(display_view, (30, 30), 10, (0, 0, 255), -1)
+            cv2.putText(display_view, "REC", (45, 35), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         # 2. If object detections are to be shown, create a side-by-side detection panel
         if show_object_detections:
             # Copy the front image and draw detections (if any)

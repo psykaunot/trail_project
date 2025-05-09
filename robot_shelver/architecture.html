@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Robot Architecture</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; }
+    .node { cursor: pointer; transition: all 0.3s; }
+    .node:hover { transform: scale(1.05); filter: drop-shadow(0 0 5px rgba(0,0,0,0.3)); }
+    .connection { stroke: #6B7280; stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .highlight { filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.7)); }
+    .tech-button { display: inline-block; padding: 4px 8px; border-radius: 9999px; font-size: 12px; margin: 2px; cursor: pointer; }
+    .tech-button.active { background-color: #F59E0B; color: white; }
+    .tech-button:not(.active) { background-color: #E5E7EB; }
+    .tech-button:not(.active):hover { background-color: #D1D5DB; }
+    .folder-group { stroke: #E5E7EB; stroke-width: 2; stroke-dasharray: 3,3; fill: rgba(229, 231, 235, 0.2); rx: 10; ry: 10; }
+    .folder-label { font-size: 12px; font-weight: bold; fill: #4B5563; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <h1 class="text-3xl font-bold mb-2 text-center">Robot Shelver Project Architecture</h1>
+  <p class="text-gray-600 mb-4 text-center max-w-3xl mx-auto">
+    An intelligent robot system combining computer vision, natural language processing, and physics-based control
+    for autonomous book finding and manipulation.
+  </p>
+  
+  <!-- Module Categories Legend -->
+  <div class="flex flex-wrap justify-center gap-4 mb-4" id="legend">
+    <!-- Will be populated by JS -->
+  </div>
+  
+  <!-- Folder Structure Legend -->
+  <div class="flex flex-wrap justify-center gap-4 mb-4">
+    <div class="flex items-center">
+      <div class="w-4 h-4 border border-dashed border-gray-400 bg-gray-100 mr-2"></div>
+      <span class="text-sm">Folder Group</span>
+    </div>
+  </div>
+  
+  <!-- Technologies Filter -->
+  <div class="flex flex-wrap justify-center gap-2 mb-4">
+    <span class="text-sm font-semibold mr-2">Highlight Technology:</span>
+    <div id="tech-buttons"></div>
+  </div>
+  
+  <div class="border border-gray-300 rounded-lg mx-auto max-w-5xl h-[650px] bg-white relative">
+    <!-- SVG will go here -->
+    <div id="diagram-container" class="w-full h-full"></div>
+    <div id="node-popup" class="hidden absolute bg-white p-4 rounded-lg shadow-lg border border-gray-200 max-w-md z-10">
+      <!-- Will be populated when hovering nodes -->
+    </div>
+  </div>
+
+  <!-- Component Reference Guide -->
+  <div class="mt-6 max-w-4xl mx-auto">
+    <h2 class="text-xl font-bold mb-4">Component Reference Guide</h2>
+    <div class="overflow-hidden border border-gray-300 rounded-lg">
+      <table class="min-w-full divide-y divide-gray-300">
+        <thead class="bg-gray-50">
+          <tr>
+            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Component</th>
+            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Folder</th>
+            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200" id="component-table">
+          <!-- Will be populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Key Capabilities & Interactions -->
+  <div class="mt-6 max-w-4xl mx-auto w-full">
+    <h2 class="text-xl font-bold mb-2">Key Capabilities & Interactions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="font-bold text-indigo-600">Manual Control System</h3>
+        <p class="text-sm text-gray-700 mb-2">Control the robot directly through keyboard inputs with immediate feedback.</p>
+        <ul class="text-sm list-disc list-inside">
+          <li>Drive robot with arrow keys (differential wheel control)</li>
+          <li>Multi-joint arm positioning with individual control</li>
+          <li>Gripper open/close with physics-based interaction</li>
+          <li>Camera pan/tilt with stability compensation</li>
+        </ul>
+      </div>
+      
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="font-bold text-red-600">Autonomous Operation System</h3>
+        <p class="text-sm text-gray-700 mb-2">LLM-powered decision making for complex missions with minimal human input.</p>
+        <ul class="text-sm list-disc list-inside">
+          <li>Book-finding missions using vision and navigation</li>
+          <li>LLM-guided exploration and decision making</li>
+          <li>Camera-guided search patterns with systematic scanning</li>
+          <li>Multi-stage task planning and execution</li>
+        </ul>
+      </div>
+      
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="font-bold text-green-600">Visual Intelligence System</h3>
+        <p class="text-sm text-gray-700 mb-2">Advanced visual perception using vision-language models for scene understanding.</p>
+        <ul class="text-sm list-disc list-inside">
+          <li>Real-time object detection with accurate bounding boxes</li>
+          <li>Scene description and analysis using vision-language models</li>
+          <li>2D to 3D coordinate mapping for spatial awareness</li>
+          <li>Book detection with position estimation for manipulation</li>
+        </ul>
+      </div>
+      
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="font-bold text-blue-600">Navigation & Manipulation System</h3>
+        <p class="text-sm text-gray-700 mb-2">Physics-based movement and object interaction with collision avoidance.</p>
+        <ul class="text-sm list-disc list-inside">
+          <li>NavMesh pathfinding with obstacle avoidance</li>
+          <li>Physics-based wheel control for smooth movement</li>
+          <li>Camera-guided precision grasping sequences</li>
+          <li>Multi-stage pick-and-place operations with books</li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="mt-4 bg-white p-4 rounded-lg shadow">
+      <h3 class="font-bold text-gray-800">System Integration</h3>
+      <p class="text-sm">
+        The Robot Shelver demonstrates advanced integration between perception, planning, and action systems. 
+        The main control flow begins with visual perception (perception/perception.py) analyzing the environment, followed by
+        intelligent decision-making (controller.py) to determine appropriate actions. These decisions
+        are executed through navigation (navigation/navmesh_navigator.py) and manipulation (manipulation/pick_place_demo.py) systems,
+        all operating within a physics-accurate simulation environment (environment.py). The project 
+        showcases how language models can be integrated with robotics to create sophisticated autonomous behaviors.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const container = document.getElementById('diagram-container');
+      const popup = document.getElementById('node-popup');
+      
+      // Create SVG
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "100%");
+      svg.setAttribute("viewBox", "0 0 1000 650");
+      container.appendChild(svg);
+      
+      // Define arrowhead marker
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      svg.appendChild(defs);
+      
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "arrowhead");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "7");
+      marker.setAttribute("refX", "0");
+      marker.setAttribute("refY", "3.5");
+      marker.setAttribute("orient", "auto");
+      defs.appendChild(marker);
+      
+      const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      polygon.setAttribute("points", "0 0, 10 3.5, 0 7");
+      polygon.setAttribute("fill", "#6B7280");
+      marker.appendChild(polygon);
+      
+      // Color scheme
+      const colors = {
+        core: "#4F46E5",
+        navigation: "#2563EB",
+        perception: "#10B981",
+        manipulation: "#F59E0B",
+        utility: "#6B7280",
+        brain: "#DC2626",
+      };
+      
+      // Module categories
+      const moduleCategories = {
+        "Core Control": "core",
+        "Decision Making": "brain",
+        "Navigation": "navigation",
+        "Visual Perception": "perception",
+        "Physical Manipulation": "manipulation",
+        "Utilities": "utility"
+      };
+      
+      // Folder structure
+      const folderGroups = {
+        "camera": {
+          color: "#818CF8",
+          files: ["camera_controller.py", "camera_stabilizer.py"]
+        },
+        "navigation": {
+          color: "#60A5FA", 
+          files: ["navmesh_navigator.py", "rl_agent.py", "rl_navigator.py"]
+        },
+        "perception": {
+          color: "#34D399",
+          files: ["perception.py"]
+        },
+        "manipulation": {
+          color: "#FBBF24",
+          files: ["pick_place_demo.py"]
+        },
+        "utils": {
+          color: "#9CA3AF",
+          files: ["link_monitor.py", "object_spawner.py", "video_recorder.py"]
+        },
+        "root": {
+          color: "#ffffff",
+          files: ["main.py", "controller.py", "environment.py"]
+        }
+      };
+      
+      // Populate legend
+      const legend = document.getElementById('legend');
+      Object.entries(moduleCategories).forEach(([name, category]) => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center';
+        div.innerHTML = `
+          <div class="w-4 h-4 rounded-full mr-2" style="background-color: ${colors[category]}"></div>
+          <span class="text-sm">${name}</span>
+        `;
+        legend.appendChild(div);
+      });
+      
+      // Node details with more information
+      const nodeDetails = {
+        "main.py": {
+          description: "Central entry point that initializes all components and manages the simulation loop",
+          functions: [
+            "Initialize simulator, agent, and robot",
+            "Process keyboard input for control",
+            "Manage camera views and UI display",
+            "Coordinate autonomous behavior sequences"
+          ],
+          technologies: ["Habitat Simulator", "OpenCV", "Physics Simulation"],
+          category: "core",
+          folder: "root"
+        },
+        "environment.py": {
+          description: "Physics simulation environment handler with robot stability mechanisms",
+          functions: [
+            "Setup physics parameters for realistic simulation",
+            "Prevent robot drift and instability",
+            "Manage robot joint constraints",
+            "Apply motion to robot components"
+          ],
+          technologies: ["Habitat Physics", "Articulated Joints", "3D Simulation"],
+          category: "core",
+          folder: "root"
+        },
+        "controller.py": {
+          description: "Intelligent decision-making system using language models for autonomous behavior",
+          functions: [
+            "Manage control modes (manual/autonomous)",
+            "Process LLM commands into robot actions",
+            "Track mission status and progress",
+            "Coordinate high-level mission sequences"
+          ],
+          technologies: ["LLM Integration", "Decision Making", "Task Planning"],
+          category: "brain",
+          folder: "root"
+        },
+        "camera_controller.py": {
+          description: "Camera movement and stabilization system for robot's vision",
+          functions: [
+            "Control pan/tilt camera movements",
+            "Stabilize camera during robot motion",
+            "Implement scanning patterns for environment search",
+            "Maintain camera joint position references"
+          ],
+          technologies: ["Camera Control", "Joint Stabilization"],
+          category: "core",
+          folder: "camera"
+        },
+        "camera_stabilizer.py": {
+          description: "Alternative camera system that completely locks camera position regardless of robot motion",
+          functions: [
+            "Enforce absolute camera stability",
+            "Override physics for camera joints",
+            "Maintain exact camera transforms",
+            "Block unwanted camera movements"
+          ],
+          technologies: ["Transform Locking", "Joint Control"],
+          category: "core",
+          folder: "camera"
+        },
+        "navmesh_navigator.py": {
+          description: "Navigation system using NavMesh pathfinding with physics-based wheel control",
+          functions: [
+            "Find paths using scene navigation mesh",
+            "Convert paths to wheel velocities",
+            "Handle collision avoidance",
+            "Manage navigation to specific targets"
+          ],
+          technologies: ["NavMesh Pathfinding", "Wheel Kinematics", "Motion Planning"],
+          category: "navigation",
+          folder: "navigation"
+        },
+        "rl_navigator.py": {
+          description: "Reinforcement learning approaches to navigation with autonomous exploration capabilities",
+          functions: [
+            "Implement more advanced path following",
+            "Provide exploration behaviors",
+            "Handle physics-based movement challenges",
+            "Test wheel control systems"
+          ],
+          technologies: ["Reinforcement Learning", "Path Finding", "Exploration Algorithms"],
+          category: "navigation",
+          folder: "navigation"
+        },
+        "rl_agent.py": {
+          description: "Base agent implementation for reinforcement learning navigation",
+          functions: [
+            "Define core agent-environment interaction",
+            "Implement learning algorithms",
+            "Process observation and reward signals",
+            "Apply learned policies for navigation"
+          ],
+          technologies: ["Reinforcement Learning", "Agent Architecture", "Policy Implementation"],
+          category: "navigation",
+          folder: "navigation"
+        },
+        "perception.py": {
+          description: "Visual intelligence system using vision-language models for scene understanding",
+          functions: [
+            "Process robot camera images",
+            "Detect and locate objects with bounding boxes",
+            "Convert 2D image coordinates to 3D positions",
+            "Generate textual descriptions of scenes"
+          ],
+          technologies: ["Computer Vision", "Vision-Language Models", "Object Detection"],
+          category: "perception",
+          folder: "perception"
+        },
+        "pick_place_demo.py": {
+          description: "Complex manipulation system for grasping and moving objects",
+          functions: [
+            "Control arm joint sequences for grasping",
+            "Implement camera-guided object approach",
+            "Manage physics for object attachment",
+            "Coordinate multi-stage picking sequences"
+          ],
+          technologies: ["Robotic Manipulation", "Arm Kinematics", "Gripper Control"],
+          category: "manipulation",
+          folder: "manipulation"
+        },
+        "object_spawner.py": {
+          description: "Creates and manages physical objects in the simulation environment",
+          functions: [
+            "Spawn books and other objects in the scene",
+            "Configure object physics properties",
+            "Position objects within navigable areas",
+            "Track all spawned objects in the scene"
+          ],
+          technologies: ["Physics Object Management", "3D Object Creation"],
+          category: "utility",
+          folder: "utils"
+        },
+        "link_monitor.py": {
+          description: "Diagnostic tool for tracking and debugging robot joint positions and rotations",
+          functions: [
+            "Monitor robot link states in real-time",
+            "Print joint position information",
+            "Track robot link transformations",
+            "Provide debugging information"
+          ],
+          technologies: ["Robot Diagnostics", "Joint Monitoring"],
+          category: "utility",
+          folder: "utils"
+        },
+        "video_recorder.py": {
+          description: "Records videos of robot operations for documentation and analysis",
+          functions: [
+            "Capture frame sequences during operation",
+            "Encode video frames with OpenCV",
+            "Save recordings to disk",
+            "Provide recording controls"
+          ],
+          technologies: ["Video Encoding", "Frame Capture", "OpenCV"],
+          category: "utility",
+          folder: "utils"
+        }
+      };
+      
+      // Nodes in organized layout
+      const nodes = [
+        // Core Control Layer
+        { id: "main.py", x: 500, y: 80, category: "core", label: "main.py", layer: 1, folder: "root" },
+        
+        // Brain/Decision Layer
+        { id: "controller.py", x: 500, y: 180, category: "brain", label: "controller.py", layer: 2, folder: "root" },
+        
+        // Primary Systems Layer - Spread out horizontally
+        { id: "environment.py", x: 200, y: 280, category: "core", label: "environment.py", layer: 3, folder: "root" },
+        { id: "perception.py", x: 500, y: 280, category: "perception", label: "perception.py", layer: 3, folder: "perception" },
+        { id: "navmesh_navigator.py", x: 800, y: 280, category: "navigation", label: "navmesh_navigator.py", layer: 3, folder: "navigation" },
+        
+        // Secondary Systems Layer - Offset to avoid vertical alignment
+        { id: "camera_controller.py", x: 170, y: 380, category: "core", label: "camera_controller.py", layer: 4, folder: "camera" },
+        { id: "pick_place_demo.py", x: 500, y: 380, category: "manipulation", label: "pick_place_demo.py", layer: 4, folder: "manipulation" },
+        { id: "rl_navigator.py", x: 830, y: 380, category: "navigation", label: "rl_navigator.py", layer: 4, folder: "navigation" },
+        
+        // Specialized Components Layer - Further offset
+        { id: "camera_stabilizer.py", x: 170, y: 480, category: "core", label: "camera_stabilizer.py", layer: 5, folder: "camera" },
+        { id: "object_spawner.py", x: 500, y: 480, category: "utility", label: "object_spawner.py", layer: 5, folder: "utils" },
+        { id: "rl_agent.py", x: 830, y: 480, category: "navigation", label: "rl_agent.py", layer: 5, folder: "navigation" },
+        
+        // Utility Layer - Spread out
+        { id: "link_monitor.py", x: 300, y: 580, category: "utility", label: "link_monitor.py", layer: 6, folder: "utils" },
+        { id: "video_recorder.py", x: 700, y: 580, category: "utility", label: "video_recorder.py", layer: 6, folder: "utils" }
+      ];
+      
+      // Define connections
+      const connections = [
+        // Layer 1 -> Layer 2
+        { from: "main.py", to: "controller.py" },
+        
+        // Layer 1 -> Layer 3
+        { from: "main.py", to: "environment.py" },
+        { from: "main.py", to: "perception.py" },
+        { from: "main.py", to: "navmesh_navigator.py" },
+        
+        // Layer 2 -> Layer 3
+        { from: "controller.py", to: "environment.py" },
+        { from: "controller.py", to: "perception.py" },
+        { from: "controller.py", to: "navmesh_navigator.py" },
+        
+        // Layer 3 -> Layer 4
+        { from: "environment.py", to: "camera_controller.py" },
+        { from: "perception.py", to: "pick_place_demo.py" },
+        { from: "navmesh_navigator.py", to: "rl_navigator.py" },
+        
+        // Layer 3 -> Layer 4 (cross-connections)
+        { from: "perception.py", to: "navmesh_navigator.py", dashed: true },
+        
+        // Layer 4 -> Layer 5
+        { from: "camera_controller.py", to: "camera_stabilizer.py" },
+        { from: "pick_place_demo.py", to: "object_spawner.py" },
+        { from: "rl_navigator.py", to: "rl_agent.py" },
+        
+        // Special connections - Using curved paths to avoid crossings
+        { from: "main.py", to: "video_recorder.py", curved: true },
+        { from: "environment.py", to: "link_monitor.py", curved: true }
+      ];
+      
+      // Key technologies
+      const technologies = [
+        "Habitat Simulator",
+        "Computer Vision",
+        "Vision-Language Models",
+        "LLM Integration",
+        "NavMesh Pathfinding",
+        "Physics Simulation",
+        "Arm Kinematics",
+        "Reinforcement Learning"
+      ];
+      
+      // Create technology filter buttons
+      const techButtons = document.getElementById('tech-buttons');
+      technologies.forEach(tech => {
+        const button = document.createElement('span');
+        button.className = 'tech-button';
+        button.textContent = tech;
+        button.dataset.tech = tech;
+        button.addEventListener('click', () => highlightTechnology(tech, button));
+        techButtons.appendChild(button);
+      });
+      
+      let activeTech = null;
+      let activeButton = null;
+      
+      function highlightTechnology(tech, button) {
+        // Clear previous highlights
+        document.querySelectorAll('.node').forEach(node => {
+          node.classList.remove('highlight');
+          node.style.opacity = '1';
+        });
+        
+        document.querySelectorAll('.connection').forEach(conn => {
+          conn.style.opacity = '1';
+        });
+        
+        document.querySelectorAll('.tech-button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // If clicking the same tech, disable highlight
+        if (activeTech === tech) {
+          activeTech = null;
+          return;
+        }
+        
+        // Set new active tech
+        activeTech = tech;
+        button.classList.add('active');
+        
+        // Dim all nodes and connections
+        document.querySelectorAll('.node').forEach(node => {
+          node.style.opacity = '0.3';
+        });
+        
+        document.querySelectorAll('.connection').forEach(conn => {
+          conn.style.opacity = '0.3';
+        });
+        
+        // Highlight nodes with this technology
+        nodes.forEach(node => {
+          const nodeData = nodeDetails[node.id];
+          if (nodeData.technologies.includes(tech)) {
+            const nodeElement = document.getElementById(`node-${node.id}`);
+            nodeElement.classList.add('highlight');
+            nodeElement.style.opacity = '1';
+          }
+        });
+      }
+      
+      // Draw layer lines
+      for (let y = 130; y <= 530; y += 100) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", "100");
+        line.setAttribute("y1", y);
+        line.setAttribute("x2", "900");
+        line.setAttribute("y2", y);
+        line.setAttribute("stroke", "#E5E7EB");
+        line.setAttribute("stroke-width", "1");
+        line.setAttribute("stroke-dasharray", "5,5");
+        svg.appendChild(line);
+      }
+      
+      // Group nodes by folder
+      const folderBounds = {};
+      
+      // Calculate bounds for each folder group
+      Object.keys(folderGroups).forEach(folder => {
+        if (folder === "root") return; // Skip root folder
+        
+        const folderNodes = nodes.filter(node => node.folder === folder);
+        if (folderNodes.length === 0) return;
+        
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        folderNodes.forEach(node => {
+          minX = Math.min(minX, node.x - 40);
+          minY = Math.min(minY, node.y - 40);
+          maxX = Math.max(maxX, node.x + 40);
+          maxY = Math.max(maxY, node.y + 40);
+        });
+        
+        folderBounds[folder] = {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY
+        };
+      });
+      
+      // Draw folder groups
+      Object.entries(folderBounds).forEach(([folder, bounds]) => {
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", bounds.x);
+        rect.setAttribute("y", bounds.y);
+        rect.setAttribute("width", bounds.width);
+        rect.setAttribute("height", bounds.height);
+        rect.setAttribute("class", "folder-group");
+        rect.setAttribute("fill", `${folderGroups[folder].color}20`); // Add 20% opacity
+        svg.appendChild(rect);
+        
+        // Add folder label
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", bounds.x + 10);
+        text.setAttribute("y", bounds.y + 20);
+        text.setAttribute("class", "folder-label");
+        text.textContent = folder;
+        svg.appendChild(text);
+      });
+      
+      // Helper function to calculate path between nodes
+      function getPath(from, to, dashed = false, curved = false) {
+        const fromNode = nodes.find(n => n.id === from);
+        const toNode = nodes.find(n => n.id === to);
+        
+        if (!fromNode || !toNode) return null;
+        
+        // For curved connections, use a curved path
+        if (curved) {
+          // Calculate control points for a nice curve
+          const midX = (fromNode.x + toNode.x) / 2;
+          let midY = (fromNode.y + toNode.y) / 2;
+          
+          // Adjust curve direction based on node positions
+          const curveOffset = 100;
+          const cpX = midX + (fromNode.x < toNode.x ? curveOffset : -curveOffset);
+          const cpY = midY;
+          
+          // Calculate node boundaries
+          const nodeRadius = 22;
+          const dx = toNode.x - fromNode.x;
+          const dy = toNode.y - fromNode.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const ratio = nodeRadius / length;
+          
+          const startX = fromNode.x + dx * ratio;
+          const startY = fromNode.y + dy * ratio;
+          const endX = toNode.x - dx * ratio;
+          const endY = toNode.y - dy * ratio;
+          
+          // Create curved path
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${startX} ${startY} Q ${cpX} ${cpY} ${endX} ${endY}`);
+          path.setAttribute("fill", "none");
+          path.setAttribute("class", dashed ? "connection dashed" : "connection");
+          path.setAttribute("marker-end", "url(#arrowhead)");
+          
+          return path;
+        }
+        
+        // For regular connections, use straight lines
+        const dx = toNode.x - fromNode.x;
+        const dy = toNode.y - fromNode.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        // Adjust line to start/end at node boundaries
+        const nodeRadius = 22;
+        const ratio = nodeRadius / length;
+        
+        const startX = fromNode.x + dx * ratio;
+        const startY = fromNode.y + dy * ratio;
+        const endX = toNode.x - dx * ratio;
+        const endY = toNode.y - dy * ratio;
+        
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", startX);
+        line.setAttribute("y1", startY);
+        line.setAttribute("x2", endX);
+        line.setAttribute("y2", endY);
+        line.setAttribute("class", dashed ? "connection dashed" : "connection");
+        line.setAttribute("marker-end", "url(#arrowhead)");
+        
+        return line;
+      }
+      
+      // Draw connections
+      connections.forEach((conn, i) => {
+        const path = getPath(conn.from, conn.to, conn.dashed, conn.curved);
+        if (path) {
+          svg.appendChild(path);
+        }
+      });
+      
+      // Draw nodes
+      nodes.forEach(node => {
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("class", "node");
+        group.setAttribute("id", `node-${node.id}`);
+        
+        // Add mouse events
+        group.addEventListener('mouseenter', () => showNodeDetails(node));
+        group.addEventListener('mouseleave', () => hideNodeDetails());
+        
+        // Node circle
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", node.x);
+        circle.setAttribute("cy", node.y);
+        circle.setAttribute("r", "22");
+        circle.setAttribute("fill", colors[node.category]);
+        group.appendChild(circle);
+        
+        // Node initial letter
+        const letter = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        letter.setAttribute("x", node.x);
+        letter.setAttribute("y", node.y);
+        letter.setAttribute("text-anchor", "middle");
+        letter.setAttribute("dominant-baseline", "middle");
+        letter.setAttribute("class", "text-xs font-bold");
+        letter.setAttribute("fill", "white");
+        letter.textContent = node.id.split('.')[0][0].toUpperCase();
+        group.appendChild(letter);
+        
+        // Node label - Show only filename not full path
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", node.x);
+        label.setAttribute("y", node.y + 40);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "text-xs font-semibold");
+        label.textContent = node.id;
+        group.appendChild(label);
+        
+        svg.appendChild(group);
+      });
+      
+      // Add layer labels
+      const layers = [
+        { y: 80, text: "Main Entry" },
+        { y: 180, text: "Control System" },
+        { y: 280, text: "Core Systems" },
+        { y: 380, text: "Specialized Systems" },
+        { y: 480, text: "Support Components" },
+        { y: 580, text: "Utilities" }
+      ];
+      
+      layers.forEach(layer => {
+        const div = document.createElement("div");
+        div.style.position = "absolute";
+        div.style.left = "10px";
+        div.style.top = `${layer.y}px`;
+        div.className = "text-xs text-gray-500 font-semibold";
+        div.textContent = layer.text;
+        container.appendChild(div);
+      });
+      
+      // Populate component table
+      const componentTable = document.getElementById('component-table');
+      Object.entries(nodeDetails).forEach(([filename, details]) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50';
+        
+        // Component name cell
+        const tdName = document.createElement('td');
+        tdName.className = 'px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900';
+        tdName.textContent = filename;
+        tr.appendChild(tdName);
+        
+        // Folder cell
+        const tdFolder = document.createElement('td');
+        tdFolder.className = 'px-3 py-2 whitespace-nowrap text-sm';
+        
+        const folderSpan = document.createElement('span');
+        folderSpan.className = 'px-2 py-1 text-xs font-medium rounded-full text-white';
+        
+        if (details.folder === "root") {
+          folderSpan.style.backgroundColor = "#6B7280";
+          folderSpan.textContent = "root";
+        } else {
+          folderSpan.style.backgroundColor = folderGroups[details.folder].color;
+          folderSpan.textContent = details.folder;
+        }
+        
+        tdFolder.appendChild(folderSpan);
+        tr.appendChild(tdFolder);
+        
+        // Category cell
+        const tdCategory = document.createElement('td');
+        tdCategory.className = 'px-3 py-2 whitespace-nowrap text-sm';
+        
+        const categoryName = Object.entries(moduleCategories).find(([name, cat]) => cat === details.category)?.[0];
+        const span = document.createElement('span');
+        span.className = `px-2 py-1 text-xs font-medium rounded-full text-white`;
+        span.style.backgroundColor = colors[details.category];
+        span.textContent = categoryName;
+        tdCategory.appendChild(span);
+        tr.appendChild(tdCategory);
+        
+        // Description cell
+        const tdDesc = document.createElement('td');
+        tdDesc.className = 'px-3 py-2 text-sm text-gray-500';
+        tdDesc.textContent = details.description;
+        tr.appendChild(tdDesc);
+        
+        componentTable.appendChild(tr);
+      });
+      
+      // Show node details on hover
+      function showNodeDetails(node) {
+        const nodeData = nodeDetails[node.id];
+        
+        // Position the popup
+        const popupX = node.x > 500 ? node.x - 220 : node.x + 70;
+        const popupY = node.y - 10;
+        popup.style.left = `${popupX}px`;
+        popup.style.top = `${popupY}px`;
+        popup.style.transform = 'translateY(-50%)';
+        
+        // Folder display
+        const folderDisplay = node.folder === "root" 
+          ? `<span class="px-2 py-1 text-xs bg-gray-200 text-gray-800 rounded-full">root</span>` 
+          : `<span class="px-2 py-1 text-xs text-white rounded-full" style="background-color: ${folderGroups[node.folder].color}">${node.folder}/</span>`;
+        
+        // Add content
+        popup.innerHTML = `
+          <div class="flex items-center gap-2 mb-2">
+            ${folderDisplay}
+            <h3 class="font-bold text-lg">${node.id}</h3>
+          </div>
+          <p class="text-sm mb-2">${nodeData.description}</p>
+          
+          <h4 class="font-semibold text-sm text-gray-700 mt-2">Key Functions:</h4>
+          <ul class="text-xs list-disc pl-5 mb-2">
+            ${nodeData.functions.map(func => `<li>${func}</li>`).join('')}
+          </ul>
+          
+          <h4 class="font-semibold text-sm text-gray-700 mt-2">Technologies:</h4>
+          <div class="flex flex-wrap gap-1 mt-1">
+            ${nodeData.technologies.map(tech => `
+              <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                ${tech}
+              </span>
+            `).join('')}
+          </div>
+        `;
+        
+        // Show popup
+        popup.classList.remove('hidden');
+      }
+      
+      function hideNodeDetails() {
+        popup.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

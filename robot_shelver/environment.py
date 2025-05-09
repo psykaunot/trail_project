@@ -12,8 +12,8 @@ import math
 import habitat_sim
 import habitat_sim.gfx
 import habitat_sim.physics as phys
-from camera_controller import CameraController  
-from camera_stabilizer import CameraStabilizer
+from camera.camera_controller import CameraController  
+from camera.camera_stabilizer import CameraStabilizer
 
 # Resolve data paths relative to this file
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -57,6 +57,81 @@ def make_cam(name, pos, ori):
     cam.position = mn.Vector3(*pos)
     cam.orientation = mn.Vector3(*ori)
     return cam
+
+def fix_ar_tag_position(locobot):
+    """Force AR tag to maintain fixed position relative to parent with improved stability."""
+    try:
+        # Get link IDs
+        ar_tag_link_id = locobot.get_link_id_from_name("locobot/ar_tag_link")
+        parent_link_id = locobot.get_link_id_from_name("locobot/ee_arm_link")
+        
+        if ar_tag_link_id == -1 or parent_link_id == -1:
+            return
+            
+        # Get nodes
+        parent_node = locobot.get_link_scene_node(parent_link_id)
+        ar_tag_node = locobot.get_link_scene_node(ar_tag_link_id)
+        
+        # Make AR tag kinematic (not affected by physics)
+        try:
+            # Force kinematic motion type
+            ar_tag_obj = locobot.get_link_object(ar_tag_link_id)
+            if ar_tag_obj:
+                ar_tag_obj.motion_type = habitat_sim.physics.MotionType.KINEMATIC
+        except:
+            pass
+        
+        # Exact fixed position offset - measured for stability
+        fixed_local_pos = mn.Vector3(-0.05, 0.0, 0.03)
+        
+        # Force position and rotation directly
+        ar_tag_node.translation = parent_node.translation + parent_node.rotation.transform_vector(fixed_local_pos)
+        ar_tag_node.rotation = parent_node.rotation
+        
+        # Set extremely high friction 
+        locobot.set_link_friction(ar_tag_link_id, 1000.0)
+    except Exception as e:
+        print(f"Error stabilizing AR tag: {e}")
+
+def stabilize_gripper_prop(locobot, dof_map, motor_ids, motor_settings):
+    """Force proper positioning for gripper prop only."""
+    try:
+        # Stabilize gripper prop by locking its rotation
+        if "gripper" in dof_map:
+            gripper_id = dof_map["gripper"]
+            # Only proceed if gripper_id exists in motor_ids or we can create it
+            if gripper_id not in motor_ids:
+                # Try to create the motor
+                motor_settings[gripper_id] = habitat_sim.physics.JointMotorSettings(
+                    position_target=0.0,
+                    position_gain=1000.0,
+                    velocity_target=0.0,
+                    velocity_gain=200.0,
+                    max_impulse=1000.0
+                )
+                try:
+                    motor_id = locobot.create_joint_motor(gripper_id, motor_settings[gripper_id])
+                    motor_ids[gripper_id] = motor_id
+                    print(f"Created new motor for gripper joint (id: {gripper_id})")
+                except Exception as e:
+                    print(f"Could not create motor for gripper joint: {e}")
+                    return
+            
+            # Now we can safely update the motor if it exists
+            if gripper_id in motor_ids:
+                pos_offset = locobot.get_link_joint_pos_offset(gripper_id)
+                if pos_offset >= 0:
+                    # Force exact neutral position
+                    joint_positions = locobot.joint_positions
+                    joint_positions[pos_offset] = 0.0
+                    locobot.joint_positions = joint_positions
+                    
+                    # Update motor settings
+                    locobot.update_joint_motor(motor_ids[gripper_id], motor_settings[gripper_id])
+        
+    except Exception as e:
+        print(f"Error stabilizing gripper prop: {e}")
+
 
 def get_joint_position(locobot, link_id, check_limits=False):
     """Get the current position of a joint by link ID with enhanced limit checking."""
@@ -849,6 +924,7 @@ def setup_simulator():
     print("Robot initialization complete.")
     return sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller
 
+
 def debug_navmesh(sim):
     """Debug the NavMesh generation and verify it's suitable for navigation."""
     if not sim.pathfinder.is_loaded:
@@ -935,6 +1011,7 @@ def enforce_robot_position_constraints(locobot, reference_position=None, max_y_d
     
     # Never apply corrections, just monitor
     return False
+
 
 def run_simulator_step(
     sim, agent, locobot, motor_ids, motor_settings, dof_map,
@@ -1195,6 +1272,8 @@ def run_simulator_step(
                     
             # Step physics simulation
             sim.step_physics(substep_dt)
+            fix_ar_tag_position(locobot)
+            stabilize_gripper_prop(locobot, dof_map, motor_ids, motor_settings)
             
             # Apply strict position constraint during exploration
             if _exploration_active:
