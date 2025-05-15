@@ -8,7 +8,7 @@ import cv2
 import time
 import traceback
 import math
-
+import threading
 import habitat_sim
 import habitat_sim.gfx
 import habitat_sim.physics as phys
@@ -41,6 +41,18 @@ SAFE_LEFT_OPEN = 0.037     # Left finger fully open position
 SAFE_LEFT_CLOSED = 0.015   # Left finger fully closed position
 SAFE_RIGHT_OPEN = -SAFE_LEFT_OPEN   # Right finger fully open position
 SAFE_RIGHT_CLOSED = -SAFE_LEFT_CLOSED # Right finger fully closed position
+
+
+# Arm rest positions for consistent positioning
+ARM_REST_POSITIONS = {
+    "waist": 0.0,
+    "shoulder": -1.5,
+    "elbow": 1.5,
+    "forearm_roll": 0.0,
+    "wrist_angle": 1.0,
+    "wrist_rotate": 0.0,
+}
+
 
 def set_exploration_active(active=True):
     """Set the exploration mode flag."""
@@ -193,7 +205,141 @@ def get_joint_limits(locobot, link_id):
             print(f"Error getting joint limits for link {link_id}: {e}")
             traceback.print_exc()
         return [-float('inf')], [float('inf')]
+    
 
+def set_arm_to_rest_position(locobot, motor_ids, motor_settings, dof_map, sim=None, debug=False):
+    """
+    Move the robot arm to a compact rest position that doesn't block camera view.
+    This position folds the arm close to the body.
+    """
+    arm_joints = ["waist", "shoulder", "elbow", "forearm_roll", "wrist_angle", "wrist_rotate"]
+    
+    # Set targets for each joint with high force
+    for joint_name in arm_joints:
+        if joint_name not in dof_map:
+            continue
+            
+        joint_id = dof_map[joint_name]
+        target_position = ARM_REST_POSITIONS[joint_name]
+        
+        # Get current position
+        pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+        
+        if pos_offset >= 0:
+            # Configure motor with high forces
+            motor_settings[joint_id] = habitat_sim.physics.JointMotorSettings(
+                position_target=target_position,
+                position_gain=500.0,
+                velocity_target=0.0,
+                velocity_gain=100.0,
+                max_impulse=3000.0
+            )
+            
+            # Apply motor settings
+            if joint_id in motor_ids:
+                locobot.update_joint_motor(motor_ids[joint_id], motor_settings[joint_id])
+    
+    # Let physics settle with the new positions
+    if sim is not None:
+        convergence_threshold = 0.05
+        max_attempts = 200
+        
+        for i in range(max_attempts):
+            # Step physics
+            sim.step_physics(1.0/60.0)
+            
+            # Force position updates for stubborn joints
+            all_converged = True
+            for joint_name in arm_joints:
+                if joint_name not in dof_map:
+                    continue
+                    
+                joint_id = dof_map[joint_name]
+                pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+                
+                if pos_offset >= 0:
+                    current_pos = locobot.joint_positions[pos_offset]
+                    target_pos = ARM_REST_POSITIONS[joint_name]
+                    error = abs(current_pos - target_pos)
+                    
+                    if error > convergence_threshold:
+                        all_converged = False
+                        
+                        # Force position if physics isn't converging
+                        if i > 50 and error > 0.2:
+                            joint_positions = locobot.joint_positions
+                            # Gradual forced movement
+                            new_pos = current_pos + (target_pos - current_pos) * 0.1
+                            joint_positions[pos_offset] = new_pos
+                            locobot.joint_positions = joint_positions
+            
+            if all_converged:
+                break
+    
+    # Final forced position set
+    for joint_name in arm_joints:
+        if joint_name not in dof_map:
+            continue
+            
+        joint_id = dof_map[joint_name]
+        target_position = ARM_REST_POSITIONS[joint_name]
+        pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+        
+        if pos_offset >= 0:
+            joint_positions = locobot.joint_positions
+            joint_positions[pos_offset] = target_position
+            locobot.joint_positions = joint_positions
+    
+    # Lock in position with extreme stiffness
+    for joint_name in arm_joints:
+        if joint_name not in dof_map:
+            continue
+            
+        joint_id = dof_map[joint_name]
+        target_position = ARM_REST_POSITIONS[joint_name]
+        
+        motor_settings[joint_id] = habitat_sim.physics.JointMotorSettings(
+            position_target=target_position,
+            position_gain=5000.0,
+            velocity_target=0.0,
+            velocity_gain=500.0,
+            max_impulse=10000.0
+        )
+        
+        if joint_id in motor_ids:
+            locobot.update_joint_motor(motor_ids[joint_id], motor_settings[joint_id])
+    
+    return True
+
+def hold_arm_at_rest(locobot, motor_ids, motor_settings, dof_map):
+    """
+    Maintain arm at rest position during scanning operations.
+    Call this periodically to ensure arm doesn't drift.
+    """
+    arm_joints = ["waist", "shoulder", "elbow", "forearm_roll", "wrist_angle", "wrist_rotate"]
+    
+    for joint_name in arm_joints:
+        if joint_name not in dof_map:
+            continue
+            
+        joint_id = dof_map[joint_name]
+        target_position = ARM_REST_POSITIONS[joint_name]
+        
+        # Force exact position
+        pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+        if pos_offset >= 0:
+            joint_positions = locobot.joint_positions
+            current_pos = joint_positions[pos_offset]
+            
+            # Check if correction needed
+            if abs(current_pos - target_position) > 0.05:
+                joint_positions[pos_offset] = target_position
+                locobot.joint_positions = joint_positions
+                
+                # Reinforce with motor command
+                if joint_id in motor_ids:
+                    motor_settings[joint_id].position_target = target_position
+                    locobot.update_joint_motor(motor_ids[joint_id], motor_settings[joint_id])
 
 # Helper function to check if key is for arm or gripper command
 def is_arm_or_gripper_command(key):
@@ -569,7 +715,7 @@ def setup_simulator():
     # Simulator configuration
     sim_cfg = habitat_sim.SimulatorConfiguration()
     sim_cfg.scene_dataset_config_file = ds_cfg
-    sim_cfg.scene_id = "102344049.scene_instance.json"
+    sim_cfg.scene_id = "102344094.scene_instance.json"
     sim_cfg.enable_physics = True
     sim_cfg.load_semantic_mesh = False
     sim_cfg.override_scene_light_defaults = True
@@ -582,7 +728,9 @@ def setup_simulator():
     top_cam = make_cam("top_rgb", (0.0, 0.0, 1.6), (0.0, 0.0, -np.pi/2))
     cam_pos = (0.1, 0.0, 0.4)
     cam_ori = (-np.pi/2, -np.pi, np.pi/2)
-    front_rgb = make_cam("robot_rgb", cam_pos, cam_ori)
+    robot_cam_pos = (0.0, 0.0, 0.0)
+    robot_cam_ori = (0.0, 0.0, 0.0)
+    front_rgb = make_cam("robot_rgb", robot_cam_pos, robot_cam_ori)
     front_depth = habitat_sim.CameraSensorSpec()
     front_depth.uuid = "depth_robot"
     front_depth.sensor_type = habitat_sim.SensorType.DEPTH
@@ -634,6 +782,34 @@ def setup_simulator():
     # Set Enforcing joint limits
     locobot.auto_clamp_joint_limits = True
 
+    # Link robot_rgb sensor to camera link with proper transform
+    try:
+        camera_link_id = locobot.get_link_id_from_name("camera_locobot_link")
+        if camera_link_id != -1:
+            camera_node = locobot.get_link_scene_node(camera_link_id)
+
+            # Find robot_rgb sensor
+            for sensor_spec in agent_cfg.sensor_specifications:
+                if sensor_spec.uuid == "robot_rgb":
+                    # Update sensor spec to match camera position
+                    sensor_spec.position = mn.Vector3(0.0, 0.0, 0.0)
+                    sensor_spec.orientation = mn.Vector3(0.0, 0.0, 0.0)
+                    break
+                
+            # After agent creation, attach sensor to camera
+            agent = sim.get_agent(0)
+            rgb_sensor = sim._sensors.get("robot_rgb")
+            if rgb_sensor:
+                sensor_obj = rgb_sensor._sensor_object
+                sensor_obj.node.parent = camera_node
+                sensor_obj.node.translation = mn.Vector3(0, 0, 0)
+                base_rot = mn.Quaternion(mn.Vector3(0.5, -0.5, -0.5), 0.5)
+                sensor_obj.node.rotation = base_rot
+                print("robot_rgb sensor attached to camera_locobot_link")
+    except Exception as e:
+        print(f"Error linking camera sensor: {e}")
+
+
     # ── INITIAL ROBOT POSE ──
     try:
         # Reset velocities first
@@ -642,7 +818,7 @@ def setup_simulator():
         
         # Set initial state - properly in a single operation
         state = locobot.rigid_state
-        state.translation = mn.Vector3(0.4, 0.0, -2.0)
+        state.translation = mn.Vector3(-10.4, 0.0, -2.0)
         upright_q = mn.Quaternion.rotation(Rad(-np.pi/2), mn.Vector3(1, 0, 0))
         yaw_q = mn.Quaternion.rotation(Rad(np.pi), mn.Vector3(0, 1, 0))
         state.rotation = yaw_q * upright_q
@@ -830,6 +1006,20 @@ def setup_simulator():
             initial_tilt=-0.26,  # Slightly downward default view
             debug=False  # Set to False in production
         )
+
+        # Force initial camera position to match controller's locked state
+        if "pan" in dof_map and "tilt" in dof_map:
+            pan_id = dof_map["pan"]
+            tilt_id = dof_map["tilt"]
+            joint_positions = locobot.joint_positions
+            pos_offset_pan = locobot.get_link_joint_pos_offset(pan_id)
+            pos_offset_tilt = locobot.get_link_joint_pos_offset(tilt_id)
+
+            if pos_offset_pan >= 0 and pos_offset_tilt >= 0:
+                joint_positions[pos_offset_pan] = camera_controller.locked_pan
+                joint_positions[pos_offset_tilt] = camera_controller.locked_tilt
+                locobot.joint_positions = joint_positions
+
     except Exception as e:
         print(f"Error creating camera controller: {e}")
         traceback.print_exc()
@@ -861,11 +1051,35 @@ def setup_simulator():
         except Exception as e:
             print(f"Error initializing velocity for joint {lid}: {e}")
 
+
+    # Force arm to initial positions
+    for joint_name, target_pos in ARM_REST_POSITIONS.items():
+        if joint_name in dof_map:
+            joint_id = dof_map[joint_name]
+            pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+            if pos_offset >= 0:
+                joint_positions = locobot.joint_positions
+                joint_positions[pos_offset] = target_pos
+                locobot.joint_positions = joint_positions
+
     # Take several small physics steps to let the initial configuration settle
     print("Taking initial settling steps...")
     for i in range(50):  # More steps for better initial stabilization
         try:
             sim.step_physics(1/240.0)  # Smaller timestep for stability
+            
+            # REAPPLY ARM REST POSITION EVERY FEW STEPS
+            if i % 5 == 0:
+                for joint_name, target_pos in ARM_REST_POSITIONS.items():
+                    if joint_name in dof_map:
+                        joint_id = dof_map[joint_name]
+                        pos_offset = locobot.get_link_joint_pos_offset(joint_id)
+                        if pos_offset >= 0:
+                            joint_positions = locobot.joint_positions
+                            joint_positions[pos_offset] = target_pos
+                            locobot.joint_positions = joint_positions
+        
+
             
             # Every 5 steps, verify the robot position hasn't drifted
             if i % 5 == 0:
@@ -931,22 +1145,14 @@ def debug_navmesh(sim):
         print("ERROR: NavMesh not loaded")
         return False
     
-    print("\n=== NAVMESH DEBUG INFO ===")
-    print(f"NavMesh area: {sim.pathfinder.navigable_area}m²")
-    
-    # Get the number of islands
-    islands = sim.pathfinder.num_islands
-    print(f"Number of islands: {islands}")
-    
     # Try to get several random points to verify sampling works
     successes = 0
     for i in range(5):
         try:
             point = sim.pathfinder.get_random_navigable_point()
-            print(f"Random point {i+1}: {point}")
             successes += 1
         except Exception as e:
-            print(f"Failed to get random point {i+1}: {e}")
+            pass
     
     if successes == 0:
         print("CRITICAL: Could not sample any random points!")
@@ -956,9 +1162,9 @@ def debug_navmesh(sim):
     robot_pos = sim.robots[0].translation if hasattr(sim, 'robots') else None
     if robot_pos:
         is_navigable = sim.pathfinder.is_navigable(robot_pos)
-        print(f"Robot position ({robot_pos}) is {'navigable' if is_navigable else 'NOT navigable'}")
+        if not is_navigable:
+            print(f"Warning: Robot position is NOT navigable")
     
-    print("=== END NAVMESH DEBUG ===\n")
     return successes > 0
 
 
@@ -1037,11 +1243,12 @@ def run_simulator_step(
         #print(f"START STEP: Camera Pan={initial_pan_pos:.6f}, Tilt={initial_tilt_pos:.6f}")
     
     if camera_controller:
+        # In autonomous mode, just stabilize the camera
+        is_camera_cmd = False
         try:
-            is_camera_cmd = camera_controller.process_key_command(key)
+            camera_controller.stabilize()
         except Exception as e:
-            print(f"Error processing camera command: {e}")
-            is_camera_cmd = False
+            print(f"Camera stabilization error: {e}")
     
     
     # Update arm/gripper movement state based on key
@@ -1109,7 +1316,11 @@ def run_simulator_step(
         ord('n'): ("wrist_rotate", ARM_SPEED), ord('m'): ("wrist_rotate", -ARM_SPEED)
     }
     
-    if key in arm_map and _is_arm_moving:
+    # Always keep arm at rest position (arm control disabled for now)
+    hold_arm_at_rest(locobot, motor_ids, motor_settings, dof_map)
+    
+    # Skip arm movement processing (disabled for now)
+    if False and key in arm_map and _is_arm_moving:
         joint_name, velocity = arm_map[key]
         
         if joint_name in dof_map:
@@ -1257,21 +1468,30 @@ def run_simulator_step(
         
         for i in range(num_substeps):        
             # Force camera positions BEFORE physics step
-            if "pan" in dof_map and "tilt" in dof_map:
-                pan_id = dof_map["pan"]
-                tilt_id = dof_map["tilt"]
-                pos_offset_pan = locobot.get_link_joint_pos_offset(pan_id)
-                pos_offset_tilt = locobot.get_link_joint_pos_offset(tilt_id)
-    
-                if pos_offset_pan >= 0 and pos_offset_tilt >= 0:
-                    joint_positions = locobot.joint_positions
-                    # Force exact positions
-                    joint_positions[pos_offset_pan] = 0.0  # Fixed pan position
-                    joint_positions[pos_offset_tilt] = -0.26  # Fixed tilt position
-                    locobot.joint_positions = joint_positions
+            # Only stabilize when camera is locked, not during movement
+            if camera_controller and camera_controller.should_apply_physics_constraint():
+                if "pan" in dof_map and "tilt" in dof_map:
+                    pan_id = dof_map["pan"]
+                    tilt_id = dof_map["tilt"]
+                    pos_offset_pan = locobot.get_link_joint_pos_offset(pan_id)
+                    pos_offset_tilt = locobot.get_link_joint_pos_offset(tilt_id)
+
+                    if pos_offset_pan >= 0 and pos_offset_tilt >= 0:
+                        joint_positions = locobot.joint_positions
+                        joint_positions[pos_offset_pan] = camera_controller.locked_pan
+                        joint_positions[pos_offset_tilt] = camera_controller.locked_tilt
+                        locobot.joint_positions = joint_positions
                     
             # Step physics simulation
             sim.step_physics(substep_dt)
+
+            if camera_controller:
+                camera_controller.stabilize()
+
+            if camera_controller:
+                camera_state = camera_controller.get_current_state()
+                #print(f"Step {i}: pan={camera_state['pan']:.4f}, tilt={camera_state['tilt']:.4f}")
+
             fix_ar_tag_position(locobot)
             stabilize_gripper_prop(locobot, dof_map, motor_ids, motor_settings)
             
@@ -1381,20 +1601,32 @@ def run_simulator_step(
         locobot.rigid_state = state
     
     # ---- AGENT CAMERA SYNCHRONIZATION ----
-    
-    # Sync agent camera with robot camera but maintain stabilization
+
     try:
         # Get the robot's base position and rotation
         robot_state = locobot.rigid_state
         robot_position = robot_state.translation
         robot_rotation = robot_state.rotation
-        
-        # Directly update agent position to match robot
+
+        # Update agent position to match robot
         agent.scene_node.translation = robot_position
         agent.scene_node.rotation = robot_rotation
-        
-        #if _debug_mode:
-        #    print(f"Agent synchronized to robot position: {robot_position}")
+
+        # Sync camera sensor with pan/tilt joints
+        if camera_controller and "robot_rgb" in sim._sensors:
+            rgb_sensor = sim._sensors["robot_rgb"]
+            sensor_obj = rgb_sensor._sensor_object
+
+            # Get current pan/tilt positions
+            pan_pos = camera_controller.pan_current
+            tilt_pos = camera_controller.tilt_current
+
+            # Apply pan/tilt rotations to sensor
+            base_rot = mn.Quaternion(mn.Vector3(0.5, -0.5, -0.5), 0.5)
+            pan_rot = mn.Quaternion.rotation(mn.Rad(pan_pos), mn.Vector3(0, 1, 0))
+            tilt_rot = mn.Quaternion.rotation(mn.Rad(tilt_pos), mn.Vector3(1, 0, 0))
+            sensor_obj.node.rotation = base_rot * pan_rot * tilt_rot
+
     except Exception as e:
         print(f" Error syncing agent camera: {e}")
         traceback.print_exc()

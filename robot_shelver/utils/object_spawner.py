@@ -23,7 +23,7 @@ class ObjectSpawner:
 
         try:
             # Load book template
-            book_template_path = "data/objects/book"
+            book_template_path = os.path.join(os.path.dirname(__file__), "..", "..", "data/objects/book")
             template_ids = self.obj_template_mgr.load_configs(book_template_path)
 
             if not template_ids:
@@ -40,7 +40,7 @@ class ObjectSpawner:
             # Determine position with improved visibility
             if position is None:
                 # Use fixed position for book
-                position = mn.Vector3(-0.02, 0.0, -2.0)
+                position = mn.Vector3(-10.8, 0.0, -2.0)
                 print(f"Using fixed position for book: {position}")
             else:
                 # Convert numpy array to Vector3 if needed

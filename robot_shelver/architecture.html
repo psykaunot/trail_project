@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Robot Architecture</title>
+  <title>Robot Shelver Architecture</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: system-ui, sans-serif; padding: 20px; }
@@ -20,10 +20,10 @@
   </style>
 </head>
 <body class="bg-gray-100">
-  <h1 class="text-3xl font-bold mb-2 text-center">Robot Shelver Project Architecture</h1>
+  <h1 class="text-3xl font-bold mb-2 text-center">Robot Shelver Architecture</h1>
   <p class="text-gray-600 mb-4 text-center max-w-3xl mx-auto">
-    An intelligent robot system combining computer vision, natural language processing, and physics-based control
-    for autonomous book finding and manipulation.
+    An autonomous robot system combining vision-language models, reinforcement learning navigation,
+    and intelligent manipulation for book search and retrieval tasks.
   </p>
   
   <!-- Module Categories Legend -->
@@ -46,7 +46,6 @@
   </div>
   
   <div class="border border-gray-300 rounded-lg mx-auto max-w-5xl h-[650px] bg-white relative">
-    <!-- SVG will go here -->
     <div id="diagram-container" class="w-full h-full"></div>
     <div id="node-popup" class="hidden absolute bg-white p-4 rounded-lg shadow-lg border border-gray-200 max-w-md z-10">
       <!-- Will be populated when hovering nodes -->
@@ -73,64 +72,69 @@
     </div>
   </div>
 
-  <!-- Key Capabilities & Interactions -->
+  <!-- Key System Flows -->
   <div class="mt-6 max-w-4xl mx-auto w-full">
-    <h2 class="text-xl font-bold mb-2">Key Capabilities & Interactions</h2>
+    <h2 class="text-xl font-bold mb-2">System Architecture & Flow</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="font-bold text-indigo-600">Manual Control System</h3>
-        <p class="text-sm text-gray-700 mb-2">Control the robot directly through keyboard inputs with immediate feedback.</p>
+        <h3 class="font-bold text-indigo-600">Autonomous Book Search Agent</h3>
+        <p class="text-sm text-gray-700 mb-2">LLM-powered ReAct agent for autonomous mission control.</p>
         <ul class="text-sm list-disc list-inside">
-          <li>Drive robot with arrow keys (differential wheel control)</li>
-          <li>Multi-joint arm positioning with individual control</li>
-          <li>Gripper open/close with physics-based interaction</li>
-          <li>Camera pan/tilt with stability compensation</li>
+          <li>Uses vision-language model for scene understanding</li>
+          <li>Follows ReAct (Reasoning + Acting) pattern</li>
+          <li>Executes tool calls through camera control</li>
+          <li>Maintains conversation history with LLM</li>
+          <li>Triggers actions based on perception results</li>
         </ul>
       </div>
       
       <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="font-bold text-red-600">Autonomous Operation System</h3>
-        <p class="text-sm text-gray-700 mb-2">LLM-powered decision making for complex missions with minimal human input.</p>
+        <h3 class="font-bold text-red-600">Vision-Language Perception</h3>
+        <p class="text-sm text-gray-700 mb-2">Advanced visual understanding using LLM integration.</p>
         <ul class="text-sm list-disc list-inside">
-          <li>Book-finding missions using vision and navigation</li>
-          <li>LLM-guided exploration and decision making</li>
-          <li>Camera-guided search patterns with systematic scanning</li>
-          <li>Multi-stage task planning and execution</li>
+          <li>Real-time object detection with bounding boxes</li>
+          <li>Book-specific detection with detailed analysis</li>
+          <li>2D pixel to 3D world coordinate conversion</li>
+          <li>Scene analysis with spatial relationships</li>
+          <li>Integration with Habitat depth sensors</li>
         </ul>
       </div>
       
       <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="font-bold text-green-600">Visual Intelligence System</h3>
-        <p class="text-sm text-gray-700 mb-2">Advanced visual perception using vision-language models for scene understanding.</p>
+        <h3 class="font-bold text-green-600">Camera Control System</h3>
+        <p class="text-sm text-gray-700 mb-2">Automated camera movement with scanning patterns.</p>
         <ul class="text-sm list-disc list-inside">
-          <li>Real-time object detection with accurate bounding boxes</li>
-          <li>Scene description and analysis using vision-language models</li>
-          <li>2D to 3D coordinate mapping for spatial awareness</li>
-          <li>Book detection with position estimation for manipulation</li>
+          <li>Multiple predefined scanning patterns</li>
+          <li>LLM-directed camera movements</li>
+          <li>Stabilization for autonomous missions</li>
+          <li>Pan/tilt control with physics integration</li>
+          <li>Book search optimized patterns</li>
         </ul>
       </div>
       
       <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="font-bold text-blue-600">Navigation & Manipulation System</h3>
-        <p class="text-sm text-gray-700 mb-2">Physics-based movement and object interaction with collision avoidance.</p>
+        <h3 class="font-bold text-blue-600">Multi-Modal Navigation</h3>
+        <p class="text-sm text-gray-700 mb-2">Multiple navigation approaches for different scenarios.</p>
         <ul class="text-sm list-disc list-inside">
-          <li>NavMesh pathfinding with obstacle avoidance</li>
-          <li>Physics-based wheel control for smooth movement</li>
-          <li>Camera-guided precision grasping sequences</li>
-          <li>Multi-stage pick-and-place operations with books</li>
+          <li>NavMesh pathfinding with velocity control</li>
+          <li>RL-based navigation with GreedyGeodesicFollower</li>
+          <li>Physics-based wheel motor control</li>
+          <li>Exploration with collision avoidance</li>
+          <li>Path planning to detected objects</li>
         </ul>
       </div>
     </div>
     
     <div class="mt-4 bg-white p-4 rounded-lg shadow">
-      <h3 class="font-bold text-gray-800">System Integration</h3>
+      <h3 class="font-bold text-gray-800">System Integration Flow</h3>
       <p class="text-sm">
-        The Robot Shelver demonstrates advanced integration between perception, planning, and action systems. 
-        The main control flow begins with visual perception (perception/perception.py) analyzing the environment, followed by
-        intelligent decision-making (controller.py) to determine appropriate actions. These decisions
-        are executed through navigation (navigation/navmesh_navigator.py) and manipulation (manipulation/pick_place_demo.py) systems,
-        all operating within a physics-accurate simulation environment (environment.py). The project 
-        showcases how language models can be integrated with robotics to create sophisticated autonomous behaviors.
+        The Robot Shelver operates through a sophisticated ReAct loop: The AutonomousBookSearchAgent (controller.py) 
+        receives visual input through the Perception system (perception/perception.py), reasons about the next action 
+        using an LLM, then executes camera movements (camera/camera_controller.py) to gather more information. 
+        When books are detected, the system can plan navigation (navigation/) and manipulation (manipulation/pick_place_demo.py) 
+        sequences. All operations occur within a physics-accurate simulation (environment.py) that manages joint motors, 
+        collision detection, and realistic dynamics. The main loop (main.py) coordinates the entire system while 
+        maintaining visual feedback and recording capabilities.
       </p>
     </div>
   </div>
@@ -167,28 +171,30 @@
       
       // Color scheme
       const colors = {
-        core: "#4F46E5",
-        navigation: "#2563EB",
-        perception: "#10B981",
-        manipulation: "#F59E0B",
-        utility: "#6B7280",
-        brain: "#DC2626",
+        core: "#4F46E5",      // Indigo
+        decision: "#DC2626",  // Red
+        navigation: "#2563EB", // Blue
+        perception: "#10B981", // Green
+        manipulation: "#F59E0B", // Amber
+        utility: "#6B7280",    // Gray
+        camera: "#8B5CF6"      // Purple
       };
       
       // Module categories
       const moduleCategories = {
-        "Core Control": "core",
-        "Decision Making": "brain",
+        "Entry Point": "core",
+        "Decision Making": "decision",
         "Navigation": "navigation",
-        "Visual Perception": "perception",
-        "Physical Manipulation": "manipulation",
+        "Vision & Perception": "perception",
+        "Manipulation": "manipulation",
+        "Camera Control": "camera",
         "Utilities": "utility"
       };
       
       // Folder structure
       const folderGroups = {
         "camera": {
-          color: "#818CF8",
+          color: "#8B5CF6",
           files: ["camera_controller.py", "camera_stabilizer.py"]
         },
         "navigation": {
@@ -209,7 +215,7 @@
         },
         "root": {
           color: "#ffffff",
-          files: ["main.py", "controller.py", "environment.py"]
+          files: ["main.py", "controller.py", "environment.py", "tools.py"]
         }
       };
       
@@ -225,237 +231,260 @@
         legend.appendChild(div);
       });
       
-      // Node details with more information
+      // Node details
       const nodeDetails = {
         "main.py": {
-          description: "Central entry point that initializes all components and manages the simulation loop",
+          description: "Main entry point that orchestrates the autonomous book search mission",
           functions: [
-            "Initialize simulator, agent, and robot",
-            "Process keyboard input for control",
-            "Manage camera views and UI display",
-            "Coordinate autonomous behavior sequences"
+            "Initialize simulator and robot components",
+            "Create and start AutonomousBookSearchAgent",
+            "Process agent commands via main thread",
+            "Manage visualization and video recording",
+            "Handle physics simulation stepping"
           ],
-          technologies: ["Habitat Simulator", "OpenCV", "Physics Simulation"],
-          category: "core",
-          folder: "root"
-        },
-        "environment.py": {
-          description: "Physics simulation environment handler with robot stability mechanisms",
-          functions: [
-            "Setup physics parameters for realistic simulation",
-            "Prevent robot drift and instability",
-            "Manage robot joint constraints",
-            "Apply motion to robot components"
-          ],
-          technologies: ["Habitat Physics", "Articulated Joints", "3D Simulation"],
+          technologies: ["Habitat Simulator", "Threading", "OpenCV", "Queue-based IPC"],
           category: "core",
           folder: "root"
         },
         "controller.py": {
-          description: "Intelligent decision-making system using language models for autonomous behavior",
+          description: "Autonomous agent implementing ReAct pattern with LLM integration",
           functions: [
-            "Manage control modes (manual/autonomous)",
-            "Process LLM commands into robot actions",
-            "Track mission status and progress",
-            "Coordinate high-level mission sequences"
+            "AutonomousBookSearchAgent with ReAct loop",
+            "Controller class for manual/autonomous modes",
+            "LLM prompt management and response parsing",
+            "Tool execution coordination",
+            "Mission state tracking"
           ],
-          technologies: ["LLM Integration", "Decision Making", "Task Planning"],
-          category: "brain",
+          technologies: ["LLM (Qwen)", "ReAct Pattern", "YAML Prompts", "JSON Parsing"],
+          category: "decision",
+          folder: "root"
+        },
+        "environment.py": {
+          description: "Physics simulation setup and robot control loop",
+          functions: [
+            "Robot initialization with joint motors",
+            "Physics parameter configuration",
+            "Camera stabilization integration",
+            "Key input processing",
+            "Joint limit enforcement"
+          ],
+          technologies: ["Habitat Physics", "Joint Motors", "URDF Loading", "NavMesh"],
+          category: "core",
+          folder: "root"
+        },
+        "tools.py": {
+          description: "Tool definitions for LLM agent to control camera",
+          functions: [
+            "start_scan: Begin systematic scanning",
+            "move_camera: Direct camera movement",
+            "examine_area: Focused observation",
+            "analyze_view: Request scene analysis"
+          ],
+          technologies: ["Tool Decorators", "JSON API", "Camera Integration"],
+          category: "decision",
           folder: "root"
         },
         "camera_controller.py": {
-          description: "Camera movement and stabilization system for robot's vision",
+          description: "Autonomous camera control with scanning patterns",
           functions: [
-            "Control pan/tilt camera movements",
-            "Stabilize camera during robot motion",
-            "Implement scanning patterns for environment search",
-            "Maintain camera joint position references"
+            "Predefined scanning patterns (wide, detailed, book_search)",
+            "LLM command execution",
+            "Pan/tilt motor control",
+            "Movement smoothing and limits",
+            "Thread-safe command processing"
           ],
-          technologies: ["Camera Control", "Joint Stabilization"],
-          category: "core",
+          technologies: ["Motor Control", "Threading", "Queue Processing"],
+          category: "camera",
           folder: "camera"
         },
         "camera_stabilizer.py": {
-          description: "Alternative camera system that completely locks camera position regardless of robot motion",
+          description: "Camera position locking for stable autonomous operation",
           functions: [
-            "Enforce absolute camera stability",
-            "Override physics for camera joints",
-            "Maintain exact camera transforms",
-            "Block unwanted camera movements"
+            "Lock camera to reference positions",
+            "High-gain position control",
+            "Joint position forcing",
+            "Reference transform management"
           ],
-          technologies: ["Transform Locking", "Joint Control"],
-          category: "core",
+          technologies: ["Position Control", "Transform Locking"],
+          category: "camera",
           folder: "camera"
         },
-        "navmesh_navigator.py": {
-          description: "Navigation system using NavMesh pathfinding with physics-based wheel control",
+        "perception.py": {
+          description: "Vision-language model integration for scene understanding",
           functions: [
-            "Find paths using scene navigation mesh",
-            "Convert paths to wheel velocities",
-            "Handle collision avoidance",
-            "Manage navigation to specific targets"
+            "Object detection with bounding boxes",
+            "Book-specific detection",
+            "Scene analysis with relationships",
+            "2D to 3D coordinate conversion",
+            "Vision-language model queries"
           ],
-          technologies: ["NavMesh Pathfinding", "Wheel Kinematics", "Motion Planning"],
+          technologies: ["LLM (LLaVA-Phi3)", "OpenCV", "Depth Sensing", "Ray Casting"],
+          category: "perception",
+          folder: "perception"
+        },
+        "navmesh_navigator.py": {
+          description: "NavMesh-based navigation with velocity control",
+          functions: [
+            "Path planning using NavMesh",
+            "Differential drive wheel control",
+            "Waypoint following",
+            "Collision avoidance",
+            "Position snapping to NavMesh"
+          ],
+          technologies: ["NavMesh", "Path Planning", "Velocity Control"],
           category: "navigation",
           folder: "navigation"
         },
         "rl_navigator.py": {
-          description: "Reinforcement learning approaches to navigation with autonomous exploration capabilities",
+          description: "Physics-based navigation with exploration capabilities",
           functions: [
-            "Implement more advanced path following",
-            "Provide exploration behaviors",
-            "Handle physics-based movement challenges",
-            "Test wheel control systems"
+            "Direct wheel motor control",
+            "Physics-based movement",
+            "Exploration to random points",
+            "Path following with turning",
+            "Agent-robot synchronization"
           ],
-          technologies: ["Reinforcement Learning", "Path Finding", "Exploration Algorithms"],
+          technologies: ["Physics Control", "Wheel Motors", "Exploration"],
           category: "navigation",
           folder: "navigation"
         },
         "rl_agent.py": {
-          description: "Base agent implementation for reinforcement learning navigation",
+          description: "RL navigation using GreedyGeodesicFollower",
           functions: [
-            "Define core agent-environment interaction",
-            "Implement learning algorithms",
-            "Process observation and reward signals",
-            "Apply learned policies for navigation"
+            "Action-based navigation",
+            "Path planning with actions",
+            "Environment exploration",
+            "Motor command mapping"
           ],
-          technologies: ["Reinforcement Learning", "Agent Architecture", "Policy Implementation"],
+          technologies: ["Reinforcement Learning", "GreedyGeodesicFollower"],
           category: "navigation",
           folder: "navigation"
         },
-        "perception.py": {
-          description: "Visual intelligence system using vision-language models for scene understanding",
-          functions: [
-            "Process robot camera images",
-            "Detect and locate objects with bounding boxes",
-            "Convert 2D image coordinates to 3D positions",
-            "Generate textual descriptions of scenes"
-          ],
-          technologies: ["Computer Vision", "Vision-Language Models", "Object Detection"],
-          category: "perception",
-          folder: "perception"
-        },
         "pick_place_demo.py": {
-          description: "Complex manipulation system for grasping and moving objects",
+          description: "Robotic manipulation for book grasping",
           functions: [
-            "Control arm joint sequences for grasping",
-            "Implement camera-guided object approach",
-            "Manage physics for object attachment",
-            "Coordinate multi-stage picking sequences"
+            "Multi-joint arm control",
+            "Gripper open/close sequences",
+            "Camera-guided alignment",
+            "Pick and place task execution",
+            "Object attachment physics"
           ],
-          technologies: ["Robotic Manipulation", "Arm Kinematics", "Gripper Control"],
+          technologies: ["Arm Kinematics", "Gripper Control", "Task Sequencing"],
           category: "manipulation",
           folder: "manipulation"
         },
         "object_spawner.py": {
-          description: "Creates and manages physical objects in the simulation environment",
+          description: "Utility for spawning books and objects in simulation",
           functions: [
-            "Spawn books and other objects in the scene",
-            "Configure object physics properties",
-            "Position objects within navigable areas",
-            "Track all spawned objects in the scene"
+            "Book object loading and spawning",
+            "Physics property configuration",
+            "Position management",
+            "Object tracking"
           ],
-          technologies: ["Physics Object Management", "3D Object Creation"],
-          category: "utility",
-          folder: "utils"
-        },
-        "link_monitor.py": {
-          description: "Diagnostic tool for tracking and debugging robot joint positions and rotations",
-          functions: [
-            "Monitor robot link states in real-time",
-            "Print joint position information",
-            "Track robot link transformations",
-            "Provide debugging information"
-          ],
-          technologies: ["Robot Diagnostics", "Joint Monitoring"],
+          technologies: ["Object Templates", "Physics Objects"],
           category: "utility",
           folder: "utils"
         },
         "video_recorder.py": {
-          description: "Records videos of robot operations for documentation and analysis",
+          description: "Video recording of robot operations",
           functions: [
-            "Capture frame sequences during operation",
-            "Encode video frames with OpenCV",
-            "Save recordings to disk",
-            "Provide recording controls"
+            "Threaded video capture",
+            "Frame queue management",
+            "MP4 encoding",
+            "Recording state control"
           ],
-          technologies: ["Video Encoding", "Frame Capture", "OpenCV"],
+          technologies: ["OpenCV", "Video Encoding", "Threading"],
+          category: "utility",
+          folder: "utils"
+        },
+        "link_monitor.py": {
+          description: "Debug tool for monitoring robot joint states",
+          functions: [
+            "Real-time joint position tracking",
+            "Link state monitoring",
+            "Periodic status reports"
+          ],
+          technologies: ["Joint Monitoring", "Debug Logging"],
           category: "utility",
           folder: "utils"
         }
       };
       
-      // Nodes in organized layout
+      // Nodes with improved layout
       const nodes = [
-        // Core Control Layer
-        { id: "main.py", x: 500, y: 80, category: "core", label: "main.py", layer: 1, folder: "root" },
+        // Entry layer
+        { id: "main.py", x: 500, y: 60, category: "core", label: "main.py", layer: 1, folder: "root" },
         
-        // Brain/Decision Layer
-        { id: "controller.py", x: 500, y: 180, category: "brain", label: "controller.py", layer: 2, folder: "root" },
+        // Decision layer
+        { id: "controller.py", x: 350, y: 160, category: "decision", label: "controller.py", layer: 2, folder: "root" },
+        { id: "tools.py", x: 650, y: 160, category: "decision", label: "tools.py", layer: 2, folder: "root" },
         
-        // Primary Systems Layer - Spread out horizontally
+        // Core systems layer
         { id: "environment.py", x: 200, y: 280, category: "core", label: "environment.py", layer: 3, folder: "root" },
         { id: "perception.py", x: 500, y: 280, category: "perception", label: "perception.py", layer: 3, folder: "perception" },
-        { id: "navmesh_navigator.py", x: 800, y: 280, category: "navigation", label: "navmesh_navigator.py", layer: 3, folder: "navigation" },
+        { id: "camera_controller.py", x: 800, y: 280, category: "camera", label: "camera_controller.py", layer: 3, folder: "camera" },
         
-        // Secondary Systems Layer - Offset to avoid vertical alignment
-        { id: "camera_controller.py", x: 170, y: 380, category: "core", label: "camera_controller.py", layer: 4, folder: "camera" },
-        { id: "pick_place_demo.py", x: 500, y: 380, category: "manipulation", label: "pick_place_demo.py", layer: 4, folder: "manipulation" },
-        { id: "rl_navigator.py", x: 830, y: 380, category: "navigation", label: "rl_navigator.py", layer: 4, folder: "navigation" },
+        // Implementation layer
+        { id: "navmesh_navigator.py", x: 150, y: 400, category: "navigation", label: "navmesh_navigator.py", layer: 4, folder: "navigation" },
+        { id: "pick_place_demo.py", x: 500, y: 400, category: "manipulation", label: "pick_place_demo.py", layer: 4, folder: "manipulation" },
+        { id: "camera_stabilizer.py", x: 850, y: 400, category: "camera", label: "camera_stabilizer.py", layer: 4, folder: "camera" },
         
-        // Specialized Components Layer - Further offset
-        { id: "camera_stabilizer.py", x: 170, y: 480, category: "core", label: "camera_stabilizer.py", layer: 5, folder: "camera" },
-        { id: "object_spawner.py", x: 500, y: 480, category: "utility", label: "object_spawner.py", layer: 5, folder: "utils" },
-        { id: "rl_agent.py", x: 830, y: 480, category: "navigation", label: "rl_agent.py", layer: 5, folder: "navigation" },
+        // Additional navigation
+        { id: "rl_navigator.py", x: 150, y: 500, category: "navigation", label: "rl_navigator.py", layer: 5, folder: "navigation" },
+        { id: "rl_agent.py", x: 150, y: 580, category: "navigation", label: "rl_agent.py", layer: 6, folder: "navigation" },
         
-        // Utility Layer - Spread out
-        { id: "link_monitor.py", x: 300, y: 580, category: "utility", label: "link_monitor.py", layer: 6, folder: "utils" },
-        { id: "video_recorder.py", x: 700, y: 580, category: "utility", label: "video_recorder.py", layer: 6, folder: "utils" }
+        // Utilities
+        { id: "object_spawner.py", x: 350, y: 500, category: "utility", label: "object_spawner.py", layer: 5, folder: "utils" },
+        { id: "video_recorder.py", x: 500, y: 500, category: "utility", label: "video_recorder.py", layer: 5, folder: "utils" },
+        { id: "link_monitor.py", x: 650, y: 500, category: "utility", label: "link_monitor.py", layer: 5, folder: "utils" }
       ];
       
-      // Define connections
+      // Connections representing data flow
       const connections = [
-        // Layer 1 -> Layer 2
+        // Main to primary systems
         { from: "main.py", to: "controller.py" },
-        
-        // Layer 1 -> Layer 3
         { from: "main.py", to: "environment.py" },
-        { from: "main.py", to: "perception.py" },
-        { from: "main.py", to: "navmesh_navigator.py" },
+        { from: "main.py", to: "video_recorder.py" },
         
-        // Layer 2 -> Layer 3
-        { from: "controller.py", to: "environment.py" },
+        // Controller connections
+        { from: "controller.py", to: "tools.py" },
         { from: "controller.py", to: "perception.py" },
-        { from: "controller.py", to: "navmesh_navigator.py" },
         
-        // Layer 3 -> Layer 4
+        // Tools to camera
+        { from: "tools.py", to: "camera_controller.py" },
+        
+        // Environment connections
         { from: "environment.py", to: "camera_controller.py" },
-        { from: "perception.py", to: "pick_place_demo.py" },
-        { from: "navmesh_navigator.py", to: "rl_navigator.py" },
+        { from: "environment.py", to: "camera_stabilizer.py" },
+        { from: "environment.py", to: "navmesh_navigator.py" },
+        { from: "environment.py", to: "pick_place_demo.py" },
         
-        // Layer 3 -> Layer 4 (cross-connections)
-        { from: "perception.py", to: "navmesh_navigator.py", dashed: true },
-        
-        // Layer 4 -> Layer 5
+        // Camera connections
         { from: "camera_controller.py", to: "camera_stabilizer.py" },
-        { from: "pick_place_demo.py", to: "object_spawner.py" },
+        
+        // Perception to manipulation
+        { from: "perception.py", to: "pick_place_demo.py", dashed: true },
+        
+        // Navigation alternatives
+        { from: "navmesh_navigator.py", to: "rl_navigator.py", dashed: true },
         { from: "rl_navigator.py", to: "rl_agent.py" },
         
-        // Special connections - Using curved paths to avoid crossings
-        { from: "main.py", to: "video_recorder.py", curved: true },
-        { from: "environment.py", to: "link_monitor.py", curved: true }
+        // Utilities
+        { from: "main.py", to: "object_spawner.py" },
+        { from: "environment.py", to: "link_monitor.py", dashed: true }
       ];
       
       // Key technologies
       const technologies = [
         "Habitat Simulator",
-        "Computer Vision",
+        "LLM (Qwen)",
         "Vision-Language Models",
-        "LLM Integration",
-        "NavMesh Pathfinding",
+        "ReAct Pattern",
+        "NavMesh",
         "Physics Simulation",
-        "Arm Kinematics",
-        "Reinforcement Learning"
+        "Motor Control",
+        "Threading",
+        "OpenCV"
       ];
       
       // Create technology filter buttons
@@ -518,7 +547,7 @@
       }
       
       // Draw layer lines
-      for (let y = 130; y <= 530; y += 100) {
+      for (let y = 110; y <= 530; y += 120) {
         const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
         line.setAttribute("x1", "100");
         line.setAttribute("y1", y);
@@ -535,7 +564,7 @@
       
       // Calculate bounds for each folder group
       Object.keys(folderGroups).forEach(folder => {
-        if (folder === "root") return; // Skip root folder
+        if (folder === "root") return;
         
         const folderNodes = nodes.filter(node => node.folder === folder);
         if (folderNodes.length === 0) return;
@@ -565,7 +594,7 @@
         rect.setAttribute("width", bounds.width);
         rect.setAttribute("height", bounds.height);
         rect.setAttribute("class", "folder-group");
-        rect.setAttribute("fill", `${folderGroups[folder].color}20`); // Add 20% opacity
+        rect.setAttribute("fill", `${folderGroups[folder].color}20`);
         svg.appendChild(rect);
         
         // Add folder label
@@ -577,52 +606,17 @@
         svg.appendChild(text);
       });
       
-      // Helper function to calculate path between nodes
-      function getPath(from, to, dashed = false, curved = false) {
+      // Helper function to calculate path
+      function getPath(from, to, dashed = false) {
         const fromNode = nodes.find(n => n.id === from);
         const toNode = nodes.find(n => n.id === to);
         
         if (!fromNode || !toNode) return null;
         
-        // For curved connections, use a curved path
-        if (curved) {
-          // Calculate control points for a nice curve
-          const midX = (fromNode.x + toNode.x) / 2;
-          let midY = (fromNode.y + toNode.y) / 2;
-          
-          // Adjust curve direction based on node positions
-          const curveOffset = 100;
-          const cpX = midX + (fromNode.x < toNode.x ? curveOffset : -curveOffset);
-          const cpY = midY;
-          
-          // Calculate node boundaries
-          const nodeRadius = 22;
-          const dx = toNode.x - fromNode.x;
-          const dy = toNode.y - fromNode.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const ratio = nodeRadius / length;
-          
-          const startX = fromNode.x + dx * ratio;
-          const startY = fromNode.y + dy * ratio;
-          const endX = toNode.x - dx * ratio;
-          const endY = toNode.y - dy * ratio;
-          
-          // Create curved path
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", `M ${startX} ${startY} Q ${cpX} ${cpY} ${endX} ${endY}`);
-          path.setAttribute("fill", "none");
-          path.setAttribute("class", dashed ? "connection dashed" : "connection");
-          path.setAttribute("marker-end", "url(#arrowhead)");
-          
-          return path;
-        }
-        
-        // For regular connections, use straight lines
         const dx = toNode.x - fromNode.x;
         const dy = toNode.y - fromNode.y;
         const length = Math.sqrt(dx * dx + dy * dy);
         
-        // Adjust line to start/end at node boundaries
         const nodeRadius = 22;
         const ratio = nodeRadius / length;
         
@@ -643,8 +637,8 @@
       }
       
       // Draw connections
-      connections.forEach((conn, i) => {
-        const path = getPath(conn.from, conn.to, conn.dashed, conn.curved);
+      connections.forEach((conn) => {
+        const path = getPath(conn.from, conn.to, conn.dashed);
         if (path) {
           svg.appendChild(path);
         }
@@ -679,7 +673,7 @@
         letter.textContent = node.id.split('.')[0][0].toUpperCase();
         group.appendChild(letter);
         
-        // Node label - Show only filename not full path
+        // Node label
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.x);
         label.setAttribute("y", node.y + 40);
@@ -693,12 +687,12 @@
       
       // Add layer labels
       const layers = [
-        { y: 80, text: "Main Entry" },
-        { y: 180, text: "Control System" },
+        { y: 60, text: "Entry Point" },
+        { y: 160, text: "Decision & Control" },
         { y: 280, text: "Core Systems" },
-        { y: 380, text: "Specialized Systems" },
-        { y: 480, text: "Support Components" },
-        { y: 580, text: "Utilities" }
+        { y: 400, text: "Implementation" },
+        { y: 500, text: "Support" },
+        { y: 580, text: "Navigation" }
       ];
       
       layers.forEach(layer => {
@@ -717,13 +711,13 @@
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-gray-50';
         
-        // Component name cell
+        // Component name
         const tdName = document.createElement('td');
         tdName.className = 'px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900';
         tdName.textContent = filename;
         tr.appendChild(tdName);
         
-        // Folder cell
+        // Folder
         const tdFolder = document.createElement('td');
         tdFolder.className = 'px-3 py-2 whitespace-nowrap text-sm';
         
@@ -741,7 +735,7 @@
         tdFolder.appendChild(folderSpan);
         tr.appendChild(tdFolder);
         
-        // Category cell
+        // Category
         const tdCategory = document.createElement('td');
         tdCategory.className = 'px-3 py-2 whitespace-nowrap text-sm';
         
@@ -753,7 +747,7 @@
         tdCategory.appendChild(span);
         tr.appendChild(tdCategory);
         
-        // Description cell
+        // Description
         const tdDesc = document.createElement('td');
         tdDesc.className = 'px-3 py-2 text-sm text-gray-500';
         tdDesc.textContent = details.description;
@@ -766,7 +760,7 @@
       function showNodeDetails(node) {
         const nodeData = nodeDetails[node.id];
         
-        // Position the popup
+        // Position popup
         const popupX = node.x > 500 ? node.x - 220 : node.x + 70;
         const popupY = node.y - 10;
         popup.style.left = `${popupX}px`;
@@ -801,7 +795,6 @@
           </div>
         `;
         
-        // Show popup
         popup.classList.remove('hidden');
       }
       

@@ -11,15 +11,15 @@ import magnum as mn
 
 class Perception:
     def __init__(self, model_name="llava:7b", api_url="http://localhost:11434/api/chat"):
-        """Initialize the image system with Ollama API integration."""
+        """Initialize perception system with vision-language model integration."""
         self.model_name = model_name
+        print(f"Using VLM model: {self.model_name}")
         self.api_url = api_url
         
-        # Create logs directory in robot_shelver folder
+        # Create logs directory for perception records
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        self.log_dir = os.path.join(current_file_dir, "image_logs")
+        self.log_dir = os.path.join(current_file_dir, "perception_logs")
         os.makedirs(self.log_dir, exist_ok=True)
-        print(f"Perception logs will be saved to: {self.log_dir}")
         
         # Camera parameters (will be updated when simulator is available)
         self.camera_params = None
@@ -34,7 +34,6 @@ class Perception:
             "resolution": sensor._spec.resolution,
             "sensor_obj": sensor._sensor_object
         }
-        print(f"Camera parameters set for {camera_uuid}: {self.camera_params['resolution']}")
     
     def encode_image(self, cv2_image):
         """Convert a CV2 image to a base64 encoded string."""
@@ -53,6 +52,10 @@ class Perception:
         payload = {
             "model": self.model_name,
             "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a perception system for a robot. Provide detailed, accurate descriptions of what you see."
+                },
                 {
                     "role": "user",
                     "content": prompt,
@@ -80,7 +83,7 @@ class Perception:
             return f"Error: {str(e)}"
     
     def log_image(self, image, description):
-        """Log the image and its description for future use."""
+        """Log the image and its description for future analysis."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Save the image
@@ -103,16 +106,28 @@ class Perception:
             }, f, indent=2)
     
     def detect_objects(self, image, prompt=None):
-        """Detect objects in the image and return their bounding boxes."""
+        """
+        Detect objects in the image using the vision-language model.
+        
+        Args:
+            image: The image to analyze
+            prompt: Optional custom prompt for detection
+            
+        Returns:
+            List of detected objects with bounding boxes
+        """
         if prompt is None:
-            prompt = """Identify the main objects in this image. 
+            prompt = """Identify all objects in this image and provide their exact locations.
+            
             For each object, provide:
             1. Object name
             2. Bounding box coordinates in format [x_min, y_min, x_max, y_max] as float values between 0 and 1
             3. A brief description of the object
             
-            Format your response as a JSON array of objects with fields: 
+            Format your response as a JSON array with fields: 
             "name", "bbox", "description"
+            
+            Be precise and thorough in your analysis.
             """
         
         description = self.process_image(image, prompt)
@@ -132,63 +147,92 @@ class Perception:
                     potential_json = json_match.group(0)
                     objects = json.loads(potential_json)
                     return [objects]
-                
-            print("Could not extract JSON from VLM response")
-            print(f"Raw response: {description}")
+            
             return []
         except Exception as e:
             print(f"Error parsing object detection results: {e}")
-            print(f"Raw response: {description}")
             return []
     
     def visualize_detections(self, image, objects):
-        """Draw bounding boxes on the image for detected objects with world coordinates."""
+        """Draw bounding boxes and information on an image for detected objects."""
         vis_image = image.copy()
         height, width = image.shape[:2]
-        
-        for obj in objects:
-            if "bbox" in obj and len(obj["bbox"]) == 4:
-                # Convert normalized coordinates to pixel values
-                x_min = int(obj["bbox"][0] * width)
-                y_min = int(obj["bbox"][1] * height)
-                x_max = int(obj["bbox"][2] * width)
-                y_max = int(obj["bbox"][3] * height)
-                
-                # Calculate center of bounding box for world coordinate estimation
-                center_x = (x_min + x_max) // 2
-                center_y = (y_min + y_max) // 2
-                
-                # Draw bounding box
-                cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-                
-                # Add label
-                label = obj.get("name", "Object")
-                cv2.putText(vis_image, label, (x_min, y_min - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-                # Try to calculate world coordinates if camera parameters are available
-                if self.camera_params is not None:
-                    world_pos = self.pixel_to_world_coordinates(center_x, center_y)
-                    if world_pos is not None:
-                        # Add world coordinate info
-                        coord_text = f"Pos: ({world_pos[0]:.2f}, {world_pos[1]:.2f}, {world_pos[2]:.2f})"
-                        cv2.putText(vis_image, coord_text, (x_min, y_max + 15), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
-        
+
+        for i, obj in enumerate(objects):
+            bbox = obj.get("bbox", [])
+
+            # Skip if bbox is empty or invalid
+            if not bbox or len(bbox) != 4:
+                print(f"Skipping object {i}: invalid bbox {bbox}")
+                continue
+
+            # Ensure values are valid
+            try:
+                x_min = max(0, min(int(bbox[0] * width), width-1))
+                y_min = max(0, min(int(bbox[1] * height), height-1))
+                x_max = max(0, min(int(bbox[2] * width), width-1))
+                y_max = max(0, min(int(bbox[3] * height), height-1))
+
+                # Skip if box has no area
+                if x_max <= x_min or y_max <= y_min:
+                    continue
+
+                # Skip very large bboxes (likely the robot)
+                bbox_width = x_max - x_min
+                bbox_height = y_max - y_min
+                if bbox_width > width * 0.5 or bbox_height > height * 0.5:
+                    print(f"Skipping large bbox (likely robot): {bbox}")
+                    continue
+
+            except (ValueError, TypeError) as e:
+                print(f"Error processing bbox {bbox}: {e}")
+                continue
+
+            # Draw bounding box
+            color = (0, 255, 0)  # Green color for visibility
+            cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), color, 2)
+
+            # Add label
+            label = obj.get("name", "Book")
+            cv2.putText(vis_image, label, (x_min, y_min - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+            # Calculate center of bounding box for world coordinate estimation
+            center_x = (x_min + x_max) // 2
+            center_y = (y_min + y_max) // 2
+
+            # Try to calculate world coordinates if camera parameters are available
+            if self.camera_params is not None:
+                world_pos = self.pixel_to_world_coordinates(center_x, center_y)
+                if world_pos is not None:
+                    # Add world coordinate info
+                    coord_text = f"Pos: ({world_pos[0]:.2f}, {world_pos[1]:.2f}, {world_pos[2]:.2f})"
+                    cv2.putText(vis_image, coord_text, (x_min, y_max + 15), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
         return vis_image
     
     def analyze_scene(self, image):
-        """Analyze the scene to identify objects and their spatial relationships."""
+        """
+        Analyze the scene to identify objects, their relationships, and spatial structure.
+        
+        Args:
+            image: The image to analyze
+            
+        Returns:
+            Dictionary with scene analysis results
+        """
         prompt = """Provide a structured analysis of this scene with the following information in JSON format:
         1. "scene_type": The type of environment (e.g., kitchen, office, living room)
         2. "objects": A list of visible objects, each with:
            - "name": Object name
            - "position": Relative position description (e.g., "center", "top-left", "on the table")
            - "attributes": List of attributes (color, size, material, etc.)
-        3. "spatial_relationships": List of relationships between objects (e.g., "cup on table", "chair next to desk")
+        3. "spatial_relationships": List of relationships between objects
         4. "navigation_cues": Important landmarks or paths visible in the scene
         
-        Format as a single JSON object."""
+        Format as a single JSON object.
+        """
         
         result = self.process_image(image, prompt)
         
@@ -205,13 +249,12 @@ class Perception:
     def pixel_to_world_coordinates(self, pixel_x, pixel_y):
         """Convert pixel coordinates to world coordinates using raycasting."""
         if self.camera_params is None or self.sim is None:
-            print("Camera parameters not set. Cannot convert coordinates.")
             return None
         
         try:
             # Get the sensor object and its render camera
             sensor_obj = self.camera_params["sensor_obj"]
-            render_camera = sensor_obj.render_camera  # Access the render_camera property
+            render_camera = sensor_obj.render_camera
             
             # Create a ray using unproject
             ray = render_camera.unproject(
@@ -226,9 +269,8 @@ class Perception:
                 hit_point = raycast_results.hits[0].point
                 return hit_point
             else:
-                # Alternative: try to use depth image if available
+                # Try to use depth image if available
                 try:
-                    # Check if we have a depth sensor with matching name pattern
                     depth_uuid = "depth_" + self.camera_params["uuid"].split("_")[0]
                     if depth_uuid in self.sim._sensors:
                         depth_obs = self.sim.get_sensor_observations()[depth_uuid]
@@ -238,8 +280,8 @@ class Perception:
                             # Calculate world position using depth
                             world_pos = ray.origin + ray.direction * depth_value
                             return world_pos
-                except Exception as e:
-                    print(f"Error using depth for coordinate conversion: {e}")
+                except:
+                    pass
                     
                 return None  # No hit found
                 
@@ -248,16 +290,10 @@ class Perception:
             return None
     
     def draw_robot_coordinates(self, image, robot_position, robot_rotation):
-        """Draw robot coordinates on the image."""
+        """Add robot position and orientation information to the image."""
         # Make a copy to avoid modifying the original
         img = image.copy()
         height, width = img.shape[:2]
-
-        # Ensure img has 3 channels (RGB)
-        if len(img.shape) == 2:  # Grayscale
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        elif img.shape[2] == 4:  # RGBA
-            img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
 
         # Create info overlay
         padding = 10
@@ -275,7 +311,6 @@ class Perception:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
         # Add yaw/pitch/roll (extract from quaternion)
-        # Convert quaternion to Euler angles
         try:
             rot_matrix = robot_rotation.to_matrix()
             euler = mn.Math.euler_angles(rot_matrix)
@@ -291,56 +326,72 @@ class Perception:
         cv2.putText(overlay, rot_text, (padding, padding + 2*line_height), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
-        # Add quaternion for reference
-        quat_text = f"Quaternion: [{robot_rotation.scalar:.2f}, {robot_rotation.vector.x:.2f}, {robot_rotation.vector.y:.2f}, {robot_rotation.vector.z:.2f}]"
-        cv2.putText(overlay, quat_text, (padding, padding + 3*line_height), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
-
-        # Add current time
+        # Add time
         time_text = f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         cv2.putText(overlay, time_text, (width - 300, padding + 3*line_height), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
-
-        # Make sure overlay and image have the same number of channels
-        if overlay.shape[2] != img.shape[2]:
-            if img.shape[2] == 4:  # If image has alpha channel
-                # Add alpha channel to overlay
-                alpha = np.ones((overlay.shape[0], overlay.shape[1], 1), dtype=np.uint8) * 255
-                overlay = np.concatenate([overlay, alpha], axis=2)
-            else:
-                # Convert image to 3 channels
-                img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
 
         # Combine overlay with image
         result = np.vstack([overlay, img])
 
         return result
     
-    # Add to perception.py
     def find_books_in_image(self, image):
-        """Find books in the camera view"""
-        prompt = """Identify all books in this image. For each book, provide:
-        1. Object name (should be 'book')
-        2. Bounding box coordinates in format [x_min, y_min, x_max, y_max] as float values between 0 and 1
-        3. A brief description of the book
-
-        Format your response as a JSON array with fields: "name", "bbox", "description"
+        prompt = """Look ONLY at objects on the floor or surfaces. Completely IGNORE the white robot gripper in the foreground.
+        
+        Find any book-shaped objects (rectangular with visible pages or spine). The book may be:
+        - Green colored
+        - Lying flat on the wooden floor
+        - Small compared to the robot gripper
+        
+        For EACH BOOK (not the robot):
+        Return a bounding box that tightly surrounds ONLY the book.
+        Format: [x_min, y_min, x_max, y_max] where values are 0-1.
+        
+        Example: [{"name": "book", "bbox": [0.3, 0.1, 0.5, 0.3], "color": "green"}]
+        
+        IMPORTANT: 
+        - Do NOT create boxes around the robot/gripper
+        - If unsure about exact coordinates, estimate based on the book's position
+        - Return [] if no books visible
         """
-
-        # Use existing detect_objects method
-        objects = self.detect_objects(image, prompt)
-
-        # Filter to keep only books
-        books = [obj for obj in objects if isinstance(obj, dict) and 
-                 obj.get('name', '').lower() == 'book']
-
-        print(f"Found {len(books)} books in image")
+        
+        books = self.detect_objects(image, prompt)
+        
+        # Enhanced debug logging
+        print(f"Raw VLM response: {json.dumps(books, indent=2)}")
+        
+        # If we get books, log the bbox format
+        if books and len(books) > 0:
+            print(f"First book bbox: {books[0].get('bbox')}")
+            print(f"Image dimensions: {image.shape}")
+        
+        # Rest of your existing saving logic
+        if books and any(book.get("bbox") and len(book["bbox"]) == 4 for book in books):
+            annotated_image = self.visualize_detections(image, books)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            img_path = os.path.join(self.log_dir, f"book_detection_{timestamp}.png")
+            cv2.imwrite(img_path, annotated_image)
+            print(f"Saved book detection image: {img_path}")
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            img_path = os.path.join(self.log_dir, f"book_raw_{timestamp}.png")
+            cv2.imwrite(img_path, image)
+            print(f"No valid bbox, saved raw image: {img_path}")
+        
         return books
     
     def get_book_position(self, book_bbox):
-        """Convert book detection to 3D coordinates"""
+        """
+        Convert book detection to 3D coordinates with improved reliability.
+        
+        Args:
+            book_bbox: Bounding box of the book [x_min, y_min, x_max, y_max]
+            
+        Returns:
+            3D world position of the book or None if conversion fails
+        """
         if not book_bbox or len(book_bbox) != 4:
-            print(f"Invalid bounding box format: {book_bbox}")
             return None
         
         # Get center of book bounding box
@@ -348,14 +399,6 @@ class Perception:
         center_x = int((book_bbox[0] + book_bbox[2]) / 2 * width)
         center_y = int((book_bbox[1] + book_bbox[3]) / 2 * height)
         
-        print(f"Book center in pixels: ({center_x}, {center_y})")
-        
         # Use depth information to get world position
         world_pos = self.pixel_to_world_coordinates(center_x, center_y)
-        
-        if world_pos is not None:
-            print(f"Book world position: {world_pos}")
-        else:
-            print("Failed to get world coordinates for book")
-            
         return world_pos
