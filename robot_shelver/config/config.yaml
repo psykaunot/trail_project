@@ -1,0 +1,52 @@
+# Ollama Configuration
+ollama:
+  base_url: "http://localhost:11434"
+  models:
+    llm: "qwen3:8b"
+    vlm: "yaniserrol/vlm-r1:latest"
+  timeout: 30
+  
+# Perception Configuration  
+perception:
+  mode: "yolo_sam"  # Options: "vlm", "yolo_sam"
+  vlm:
+    model: "yaniserrol/vlm-r1:latest"
+    api_url: "http://localhost:11434/api/chat"
+  yolo_sam:
+    yolo_model: "yolov8n"  # Future
+    sam_model: "sam_b"     # Future
+    confidence_threshold: 0.5
+    
+# Semantic Forest Configuration
+semantic_forest:
+  clustering:
+    algorithm: "hierarchical"
+    distance_threshold: 0.5
+    min_cluster_size: 3
+  node_types:
+    - "book_instance"
+    - "book_cluster"
+    - "spatial_region"
+  summarization:
+    model: "qwen3:8b"
+    max_summary_length: 200
+    
+# Retrieval Configuration
+retrieval:
+  top_k: 5
+  similarity_threshold: 0.7
+  use_spatial_reranking: true
+  
+# Agent Configuration  
+agent:
+  search_timeout: 300  # 5 minutes
+  scan_pause_time: 3.0
+  novelty_threshold: 0.1
+  coverage_threshold: 0.9
+  
+# Paths
+paths:
+  embodied_rag_root: "./Embodied_RAG"
+  logs: "./logs"
+  memory_save: "./semantic_forest_save.json"
+  video_output: "./autonomous_book_search.mp4"

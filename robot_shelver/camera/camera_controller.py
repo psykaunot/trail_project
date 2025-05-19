@@ -67,6 +67,9 @@ class CameraController:
         self.has_movement_command = False
         self.command_complete_time = 0.0
         
+        # Flag to indicate when picking is active
+        self.is_picking = False
+        
         self._update_joint_positions()
         self.locked_pan = self.pan_current
         self.locked_tilt = self.tilt_current
@@ -216,8 +219,8 @@ class CameraController:
                 self.motor_settings[self.tilt_link_id]
             )
 
-        if self.debug:
-            print(f"Motors configured for {self.movement_mode} mode: gain={pan_gain}")
+        #if self.debug:
+        #    print(f"Motors configured for {self.movement_mode} mode: gain={pan_gain}")
     
     def process_commands(self):
         """Process pending commands from the queue - must be called from main thread."""

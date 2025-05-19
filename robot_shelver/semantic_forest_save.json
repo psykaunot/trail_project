@@ -1,0 +1,1678 @@
+{
+  "nodes": {
+    "book_1747503456751_6c511cec": {
+      "node_id": "book_1747503456751_6c511cec",
+      "node_type": "book_instance",
+      "description": "A potential book detected with specialized detection (confidence: 0.80)",
+      "attributes": {
+        "world_position": [
+          -10.79340928642767,
+          0.02186916309214523,
+          -1.9998451002221818
+        ],
+        "bbox": [
+          0.34375,
+          0.175,
+          0.4953125,
+          0.3416666666666667
+        ],
+        "timestamp": 1747503456.7515383,
+        "creation_time": 1747503456.7515383,
+        "camera_position": {
+          "pan": -0.25,
+          "tilt": 1.100000023841858,
+          "pan_target": -0.25,
+          "tilt_target": 1.1,
+          "is_moving": false,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.9199999999999999,
+        "detection_method": "specialized",
+        "physical_properties": {
+          "width_ratio": 0.1515625,
+          "height_ratio": 0.16666666666666669,
+          "aspect_ratio": 0.9093749999999998,
+          "confidence": 0.9199999999999999
+        },
+        "visual_features": {
+          "detection_method": "specialized",
+          "detection_quality": "medium"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747634732994",
+            "timestamp": 1747634732.994255,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 0.6000000238418579,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.830348014831543,
+              5.960464477539063e-08,
+              -2.2205190658569336
+            ]
+          },
+          {
+            "id": "obs_1747634736098",
+            "timestamp": 1747634736.0983646,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 0.699999988079071,
+              "pan_target": 0.5,
+              "tilt_target": 0.6,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.790325164794922,
+              0.021483004093170166,
+              -1.9983586072921753
+            ]
+          },
+          {
+            "id": "obs_1747635343615",
+            "timestamp": 1747635343.6155446,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.25,
+              "tilt_target": 1.1,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.792351722717285,
+              0.022366344928741455,
+              -1.9996083974838257
+            ]
+          },
+          {
+            "id": "obs_1747635346602",
+            "timestamp": 1747635346.6020465,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 1.2000000476837158,
+              "pan_target": 0.0,
+              "tilt_target": 1.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.794306755065918,
+              0.021577000617980957,
+              -2.0000240802764893
+            ]
+          },
+          {
+            "id": "obs_1747635349652",
+            "timestamp": 1747635349.6528416,
+            "camera_state": {
+              "pan": 0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": 0.25,
+              "tilt_target": 1.1,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.791821479797363,
+              0.02257859706878662,
+              -1.9988958835601807
+            ]
+          },
+          {
+            "id": "obs_1747635359026",
+            "timestamp": 1747635359.0262315,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 0.699999988079071,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.790325164794922,
+              0.021483004093170166,
+              -1.9983586072921753
+            ]
+          },
+          {
+            "id": "obs_1747636557090",
+            "timestamp": 1747636557.0901396,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.25,
+              "tilt_target": 1.1,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.792351722717285,
+              0.022366344928741455,
+              -1.9996083974838257
+            ]
+          },
+          {
+            "id": "obs_1747636560178",
+            "timestamp": 1747636560.178884,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 1.2000000476837158,
+              "pan_target": 0.0,
+              "tilt_target": 1.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.794306755065918,
+              0.021577000617980957,
+              -2.0000240802764893
+            ]
+          },
+          {
+            "id": "obs_1747636563356",
+            "timestamp": 1747636563.3565145,
+            "camera_state": {
+              "pan": 0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": 0.25,
+              "tilt_target": 1.1,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.791821479797363,
+              0.02257859706878662,
+              -1.9988958835601807
+            ]
+          },
+          {
+            "id": "obs_1747636581952",
+            "timestamp": 1747636581.9526815,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 1.2000000476837158,
+              "pan_target": 0.0,
+              "tilt_target": -0.1,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.794306755065918,
+              0.021577000617980957,
+              -2.0000240802764893
+            ]
+          }
+        ],
+        "last_seen": 1747636581.9526815,
+        "observation_count": 70,
+        "position_history": [
+          {
+            "position": [
+              -10.790325164794922,
+              0.021483004093170166,
+              -1.9983586072921753
+            ],
+            "timestamp": 1747635359.0262315,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.008054960649234508
+          },
+          {
+            "position": [
+              -10.792351722717285,
+              0.022366344928741455,
+              -1.9996083974838257
+            ],
+            "timestamp": 1747636557.0901396,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.002690744426406203
+          },
+          {
+            "position": [
+              -10.794306755065918,
+              0.021577000617980957,
+              -2.0000240802764893
+            ],
+            "timestamp": 1747636560.178884,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.002381611508747818
+          },
+          {
+            "position": [
+              -10.791821479797363,
+              0.02257859706878662,
+              -1.9988958835601807
+            ],
+            "timestamp": 1747636563.3565145,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.002230646975106788
+          },
+          {
+            "position": [
+              -10.794306755065918,
+              0.021577000617980957,
+              -2.0000240802764893
+            ],
+            "timestamp": 1747636581.9526815,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.0019212940720140285
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    },
+    "book_1747506750163_0183a5b9": {
+      "node_id": "book_1747506750163_0183a5b9",
+      "node_type": "book_instance",
+      "description": "A potential book detected with specialized detection (confidence: 0.80)",
+      "attributes": {
+        "world_position": [
+          -10.611535659433901,
+          0.6323606964395195,
+          -2.351700705417171
+        ],
+        "bbox": [
+          0.85625,
+          0.25416666666666665,
+          0.9875,
+          0.3416666666666667
+        ],
+        "timestamp": 1747506750.1636028,
+        "creation_time": 1747506750.1636028,
+        "camera_position": {
+          "pan": -0.5,
+          "tilt": -0.20000000298023224,
+          "pan_target": -0.5,
+          "tilt_target": -0.2,
+          "is_moving": false,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.8000000000000002,
+        "detection_method": "specialized",
+        "physical_properties": {
+          "width_ratio": 0.1312500000000001,
+          "height_ratio": 0.08750000000000002,
+          "aspect_ratio": 1.5000000000000007,
+          "confidence": 0.8
+        },
+        "visual_features": {
+          "detection_method": "specialized",
+          "detection_quality": "medium"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747507079475",
+            "timestamp": 1747507079.4753425,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 0.699999988079071,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8
+          },
+          {
+            "id": "obs_1747512244985",
+            "timestamp": 1747512244.9852421,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8
+          },
+          {
+            "id": "obs_1747512804900",
+            "timestamp": 1747512804.9005601,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8
+          },
+          {
+            "id": "obs_1747576030626",
+            "timestamp": 1747576030.6261919,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8
+          },
+          {
+            "id": "obs_1747576900493",
+            "timestamp": 1747576900.4933956,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8
+          },
+          {
+            "id": "obs_1747579145621",
+            "timestamp": 1747579145.621245,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ]
+          },
+          {
+            "id": "obs_1747579484296",
+            "timestamp": 1747579484.296878,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ]
+          },
+          {
+            "id": "obs_1747581602883",
+            "timestamp": 1747581602.8838615,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ]
+          },
+          {
+            "id": "obs_1747596541299",
+            "timestamp": 1747596541.2991056,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ]
+          },
+          {
+            "id": "obs_1747635365204",
+            "timestamp": 1747635365.204373,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": -0.20000000298023224,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ]
+          }
+        ],
+        "spatial_context": {
+          "nearby_books": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is below (nearby)",
+              "distance": 0.7244477678766622
+            }
+          ],
+          "alignments": [],
+          "arrangements": {}
+        },
+        "nearby_book_ids": [
+          "book_1747503456751_6c511cec"
+        ],
+        "last_seen": 1747635365.204373,
+        "observation_count": 11,
+        "position_history": [
+          {
+            "position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ],
+            "timestamp": 1747579145.621245,
+            "confidence": 0.8,
+            "distance_from_previous": 0.023753046133934214
+          },
+          {
+            "position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ],
+            "timestamp": 1747579484.296878,
+            "confidence": 0.8,
+            "distance_from_previous": 0.011876523066966849
+          },
+          {
+            "position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ],
+            "timestamp": 1747581602.8838615,
+            "confidence": 0.8,
+            "distance_from_previous": 0.005938261533483355
+          },
+          {
+            "position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ],
+            "timestamp": 1747596541.2991056,
+            "confidence": 0.8,
+            "distance_from_previous": 0.0029691307667416285
+          },
+          {
+            "position": [
+              -10.611279487609863,
+              0.6330174207687378,
+              -2.351933240890503
+            ],
+            "timestamp": 1747635365.204373,
+            "confidence": 0.8,
+            "distance_from_previous": 0.0014845653833708838
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    },
+    "book_1747507083288_ca4da3aa": {
+      "node_id": "book_1747507083288_ca4da3aa",
+      "node_type": "book_instance",
+      "description": "A possible book (detected as chair) with 0.25 confidence (low)",
+      "attributes": {
+        "world_position": [
+          -11.395841598510742,
+          -5.960464477539063e-08,
+          -1.661081314086914
+        ],
+        "bbox": [
+          0.5078125,
+          0.175,
+          0.659375,
+          0.3416666666666667
+        ],
+        "timestamp": 1747507083.2885957,
+        "creation_time": 1747507083.2885957,
+        "camera_position": {
+          "pan": 0.0,
+          "tilt": -0.10000000149011612,
+          "pan_target": 0.0,
+          "tilt_target": -0.1,
+          "is_moving": true,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.5929564742147923,
+        "detection_method": "yolo_sam",
+        "physical_properties": {
+          "width_ratio": 0.15156250000000004,
+          "height_ratio": 0.16666666666666669,
+          "aspect_ratio": 0.9093750000000002,
+          "confidence": 0.9199999999999999
+        },
+        "visual_features": {
+          "detection_method": "yolo_sam",
+          "detection_quality": "low"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747507083288",
+            "timestamp": 1747507083.2885957,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": -0.10000000149011612,
+              "pan_target": 0.0,
+              "tilt_target": -0.1,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.2866102300584316
+          },
+          {
+            "id": "obs_1747579002445",
+            "timestamp": 1747579002.4453075,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 0.6000000238418579,
+              "pan_target": -0.5,
+              "tilt_target": 0.6,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.29078976511955257,
+            "world_position": [
+              -11.37304401397705,
+              0.23272442817687988,
+              -1.9050235748291016
+            ]
+          },
+          {
+            "id": "obs_1747579040149",
+            "timestamp": 1747579040.1495461,
+            "camera_state": {
+              "pan": 0.5,
+              "tilt": 0.6000000238418579,
+              "pan_target": 0.25,
+              "tilt_target": 1.1,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -11.395841598510742,
+              -5.960464477539063e-08,
+              -1.661081314086914
+            ]
+          },
+          {
+            "id": "obs_1747636570130",
+            "timestamp": 1747636570.1307383,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 0.6000000238418579,
+              "pan_target": -0.5,
+              "tilt_target": 0.6,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.2914050281047821,
+            "world_position": [
+              -11.37304401397705,
+              0.23272442817687988,
+              -1.9050235748291016
+            ]
+          }
+        ],
+        "spatial_context": {
+          "nearby_books": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is below (close)",
+              "distance": 0.6865246060175044
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is above (nearby)",
+              "distance": 0.9714370622673218
+            }
+          ],
+          "alignments": [],
+          "arrangements": {}
+        },
+        "nearby_book_ids": [
+          "book_1747503456751_6c511cec",
+          "book_1747506750163_0183a5b9"
+        ],
+        "last_seen": 1747636570.1307383,
+        "observation_count": 3,
+        "position_history": [
+          {
+            "position": [
+              -11.37304401397705,
+              0.23272442817687988,
+              -1.9050235748291016
+            ],
+            "timestamp": 1747579002.4453075,
+            "confidence": 0.29078976511955257,
+            "distance_from_previous": 0.176041729200852
+          },
+          {
+            "position": [
+              -11.395841598510742,
+              -5.960464477539063e-08,
+              -1.661081314086914
+            ],
+            "timestamp": 1747579040.1495461,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.30232595923802985
+          },
+          {
+            "position": [
+              -11.37304401397705,
+              0.23272442817687988,
+              -1.9050235748291016
+            ],
+            "timestamp": 1747636570.1307383,
+            "confidence": 0.2914050281047821,
+            "distance_from_previous": 0.3379175101259969
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    },
+    "book_1747512226122_ae4dd02f": {
+      "node_id": "book_1747512226122_ae4dd02f",
+      "node_type": "book_instance",
+      "description": "A potential book detected with specialized detection (confidence: 0.80)",
+      "attributes": {
+        "world_position": [
+          -10.810695581657942,
+          0.3447001867516096,
+          -2.250456676926724
+        ],
+        "bbox": [
+          0.43125,
+          0.08541666666666667,
+          0.571875,
+          0.22916666666666666
+        ],
+        "timestamp": 1747512226.1229496,
+        "creation_time": 1747512226.1229496,
+        "camera_position": {
+          "pan": -0.5,
+          "tilt": 0.6000000238418579,
+          "pan_target": 0.0,
+          "tilt_target": 1.2,
+          "is_moving": false,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.872,
+        "detection_method": "specialized",
+        "physical_properties": {
+          "width_ratio": 0.140625,
+          "height_ratio": 0.14375,
+          "aspect_ratio": 0.9782608695652175,
+          "confidence": 0.9199999999999999
+        },
+        "visual_features": {
+          "detection_method": "specialized",
+          "detection_quality": "medium"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747512226122",
+            "timestamp": 1747512226.1229496,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 0.6000000238418579,
+              "pan_target": 0.0,
+              "tilt_target": 1.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999
+          },
+          {
+            "id": "obs_1747634739190",
+            "timestamp": 1747634739.1909506,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 0.699999988079071,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.725086212158203,
+              0.34126150608062744,
+              -2.248627185821533
+            ]
+          }
+        ],
+        "spatial_context": {
+          "nearby_books": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is below (close)",
+              "distance": 0.4423807811321132
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is above (close)",
+              "distance": 0.31833248410942316
+            },
+            {
+              "book_id": "book_1747507083288_ca4da3aa",
+              "description": "A possible book (detected as chair) with 0.25 confidence (low)",
+              "relation": "might be is aligned with (nearby)",
+              "distance": 0.7141546206181861
+            }
+          ],
+          "alignments": [],
+          "arrangements": {
+            "groups": [
+              {
+                "book_id": "book_1747503456751_6c511cec",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              },
+              {
+                "book_id": "book_1747506750163_0183a5b9",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              }
+            ]
+          }
+        },
+        "nearby_book_ids": [
+          "book_1747503456751_6c511cec",
+          "book_1747506750163_0183a5b9",
+          "book_1747507083288_ca4da3aa"
+        ],
+        "arrangements": {
+          "groups": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            }
+          ]
+        },
+        "last_seen": 1747634739.1909506,
+        "observation_count": 1,
+        "position_history": [
+          {
+            "position": [
+              -10.725086212158203,
+              0.34126150608062744,
+              -2.248627185821533
+            ],
+            "timestamp": 1747634739.1909506,
+            "confidence": 0.8,
+            "distance_from_previous": 0.1602178746096679
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    },
+    "book_1747512240318_2a62c337": {
+      "node_id": "book_1747512240318_2a62c337",
+      "node_type": "book_instance",
+      "description": "A possible book (detected as umbrella) with 0.35 confidence (low)",
+      "attributes": {
+        "world_position": [
+          -10.542491163588451,
+          0.23562689206478357,
+          -2.172594620227472
+        ],
+        "bbox": [
+          0.4359375,
+          0.48541666666666666,
+          0.5671875,
+          0.6020833333333333
+        ],
+        "timestamp": 1747512240.3183985,
+        "creation_time": 1747512240.3183985,
+        "camera_position": {
+          "pan": 0.0,
+          "tilt": 0.699999988079071,
+          "pan_target": 0.0,
+          "tilt_target": 0.7,
+          "is_moving": true,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.8645592366495515,
+        "detection_method": "yolo_sam",
+        "physical_properties": {
+          "width_ratio": 0.13124999999999998,
+          "height_ratio": 0.11666666666666664,
+          "aspect_ratio": 1.125,
+          "confidence": 0.9199999999999999
+        },
+        "visual_features": {
+          "detection_method": "yolo_sam",
+          "detection_quality": "low"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747512240318",
+            "timestamp": 1747512240.3183985,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 0.699999988079071,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.3473360240459442
+          },
+          {
+            "id": "obs_1747579005046",
+            "timestamp": 1747579005.0469975,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 1.0,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": true,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.552885055541992,
+              0.12815693020820618,
+              -2.0689592361450195
+            ]
+          },
+          {
+            "id": "obs_1747579011154",
+            "timestamp": 1747579011.1543021,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 1.2000000476837158,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.576485633850098,
+              0.2567969858646393,
+              -2.229945659637451
+            ]
+          },
+          {
+            "id": "obs_1747580330410",
+            "timestamp": 1747580330.4105687,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 1.0,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.552885055541992,
+              0.12815693020820618,
+              -2.0689592361450195
+            ]
+          },
+          {
+            "id": "obs_1747580336632",
+            "timestamp": 1747580336.6326327,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.534585952758789,
+              0.301144003868103,
+              -2.237184524536133
+            ]
+          },
+          {
+            "id": "obs_1747636572591",
+            "timestamp": 1747636572.5919561,
+            "camera_state": {
+              "pan": -0.5,
+              "tilt": 1.0,
+              "pan_target": 0.0,
+              "tilt_target": 0.7,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.552885055541992,
+              0.12815693020820618,
+              -2.0689592361450195
+            ]
+          },
+          {
+            "id": "obs_1747636578770",
+            "timestamp": 1747636578.770822,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.8,
+            "world_position": [
+              -10.534585952758789,
+              0.301144003868103,
+              -2.237184524536133
+            ]
+          }
+        ],
+        "spatial_context": {
+          "nearby_books": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is below (close)",
+              "distance": 0.4023251559749932
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is above (close)",
+              "distance": 0.42708507801604517
+            },
+            {
+              "book_id": "book_1747507083288_ca4da3aa",
+              "description": "A possible book (detected as chair) with 0.25 confidence (low)",
+              "relation": "is aligned with (nearby)",
+              "distance": 0.9009362045492038
+            },
+            {
+              "book_id": "book_1747512226122_ae4dd02f",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "might be is aligned with (close)",
+              "distance": 0.4523059753140708
+            }
+          ],
+          "alignments": [],
+          "arrangements": {
+            "groups": [
+              {
+                "book_id": "book_1747503456751_6c511cec",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              },
+              {
+                "book_id": "book_1747506750163_0183a5b9",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              },
+              {
+                "book_id": "book_1747512226122_ae4dd02f",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              }
+            ]
+          }
+        },
+        "nearby_book_ids": [
+          "book_1747503456751_6c511cec",
+          "book_1747506750163_0183a5b9",
+          "book_1747507083288_ca4da3aa",
+          "book_1747512226122_ae4dd02f"
+        ],
+        "arrangements": {
+          "groups": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            },
+            {
+              "book_id": "book_1747512226122_ae4dd02f",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            }
+          ]
+        },
+        "last_seen": 1747636578.770822,
+        "observation_count": 6,
+        "position_history": [
+          {
+            "position": [
+              -10.576485633850098,
+              0.2567969858646393,
+              -2.229945659637451
+            ],
+            "timestamp": 1747579011.1543021,
+            "confidence": 0.8,
+            "distance_from_previous": 0.2007551579118219
+          },
+          {
+            "position": [
+              -10.552885055541992,
+              0.12815693020820618,
+              -2.0689592361450195
+            ],
+            "timestamp": 1747580330.4105687,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.11249850670547436
+          },
+          {
+            "position": [
+              -10.534585952758789,
+              0.301144003868103,
+              -2.237184524536133
+            ],
+            "timestamp": 1747580336.6326327,
+            "confidence": 0.8,
+            "distance_from_previous": 0.19038296739858437
+          },
+          {
+            "position": [
+              -10.552885055541992,
+              0.12815693020820618,
+              -2.0689592361450195
+            ],
+            "timestamp": 1747636572.5919561,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.14153733237158425
+          },
+          {
+            "position": [
+              -10.534585952758789,
+              0.301144003868103,
+              -2.237184524536133
+            ],
+            "timestamp": 1747636578.770822,
+            "confidence": 0.8,
+            "distance_from_previous": 0.1737344732960976
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    },
+    "book_1747579011153_03b7c020": {
+      "node_id": "book_1747579011153_03b7c020",
+      "node_type": "book_instance",
+      "description": "A potential book detected with specialized detection (confidence: 0.80)",
+      "attributes": {
+        "world_position": [
+          -10.738621711730957,
+          5.960464477539063e-08,
+          -1.6350753605365753
+        ],
+        "bbox": [
+          0.028125,
+          0.2625,
+          0.2078125,
+          0.4979166666666667
+        ],
+        "timestamp": 1747579011.153168,
+        "creation_time": 1747579011.153168,
+        "camera_position": {
+          "pan": 0.0,
+          "tilt": 1.2000000476837158,
+          "pan_target": -0.5,
+          "tilt_target": -0.2,
+          "is_moving": false,
+          "is_scanning": true,
+          "pan_range": [
+            -1.57,
+            1.57
+          ],
+          "tilt_range": [
+            -1.57,
+            1.2
+          ]
+        },
+        "confidence": 0.9199999999999999,
+        "detection_method": "specialized",
+        "physical_properties": {
+          "width_ratio": 0.1796875,
+          "height_ratio": 0.23541666666666666,
+          "aspect_ratio": 0.7632743362831859,
+          "confidence": 0.9199999999999999
+        },
+        "visual_features": {
+          "detection_method": "specialized",
+          "detection_quality": "medium"
+        },
+        "observation_history": [
+          {
+            "id": "obs_1747579011153",
+            "timestamp": 1747579011.153168,
+            "camera_state": {
+              "pan": 0.0,
+              "tilt": 1.2000000476837158,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999
+          },
+          {
+            "id": "obs_1747580336632",
+            "timestamp": 1747580336.6321895,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.778834342956543,
+              5.960464477539063e-08,
+              -1.6503334045410156
+            ]
+          },
+          {
+            "id": "obs_1747636578770",
+            "timestamp": 1747636578.7702959,
+            "camera_state": {
+              "pan": -0.25,
+              "tilt": 1.100000023841858,
+              "pan_target": -0.5,
+              "tilt_target": -0.2,
+              "is_moving": false,
+              "is_scanning": true,
+              "pan_range": [
+                -1.57,
+                1.57
+              ],
+              "tilt_range": [
+                -1.57,
+                1.2
+              ]
+            },
+            "confidence": 0.9199999999999999,
+            "world_position": [
+              -10.778834342956543,
+              5.960464477539063e-08,
+              -1.6503334045410156
+            ]
+          }
+        ],
+        "spatial_context": {
+          "nearby_books": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "possibly is aligned with (close)",
+              "distance": 0.4482208992582765
+            },
+            {
+              "book_id": "book_1747506750163_0183a5b9",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is above (nearby)",
+              "distance": 0.9720402060257123
+            },
+            {
+              "book_id": "book_1747507083288_ca4da3aa",
+              "description": "A possible book (detected as chair) with 0.25 confidence (low)",
+              "relation": "is above (nearby)",
+              "distance": 0.8301573261457154
+            },
+            {
+              "book_id": "book_1747512226122_ae4dd02f",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "relation": "is above (nearby)",
+              "distance": 0.7946652350560044
+            },
+            {
+              "book_id": "book_1747512240318_2a62c337",
+              "description": "A possible book (detected as umbrella) with 0.35 confidence (low)",
+              "relation": "is above (close)",
+              "distance": 0.49865899061933006
+            }
+          ],
+          "alignments": [],
+          "arrangements": {
+            "groups": [
+              {
+                "book_id": "book_1747503456751_6c511cec",
+                "description": "A potential book detected with specialized detection (confidence: 0.80)",
+                "arrangement": "group"
+              },
+              {
+                "book_id": "book_1747512240318_2a62c337",
+                "description": "A possible book (detected as umbrella) with 0.35 confidence (low)",
+                "arrangement": "group"
+              }
+            ]
+          }
+        },
+        "nearby_book_ids": [
+          "book_1747503456751_6c511cec",
+          "book_1747506750163_0183a5b9",
+          "book_1747507083288_ca4da3aa",
+          "book_1747512226122_ae4dd02f",
+          "book_1747512240318_2a62c337"
+        ],
+        "arrangements": {
+          "groups": [
+            {
+              "book_id": "book_1747503456751_6c511cec",
+              "description": "A potential book detected with specialized detection (confidence: 0.80)",
+              "arrangement": "group"
+            },
+            {
+              "book_id": "book_1747512240318_2a62c337",
+              "description": "A possible book (detected as umbrella) with 0.35 confidence (low)",
+              "arrangement": "group"
+            }
+          ]
+        },
+        "last_seen": 1747636578.7702959,
+        "observation_count": 2,
+        "position_history": [
+          {
+            "position": [
+              -10.778834342956543,
+              5.960464477539063e-08,
+              -1.6503334045410156
+            ],
+            "timestamp": 1747580336.6321895,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.1720401635398621
+          },
+          {
+            "position": [
+              -10.778834342956543,
+              5.960464477539063e-08,
+              -1.6503334045410156
+            ],
+            "timestamp": 1747636578.7702959,
+            "confidence": 0.9199999999999999,
+            "distance_from_previous": 0.08602008176993105
+          }
+        ]
+      },
+      "children": [],
+      "parent": null
+    }
+  },
+  "clusters": {}
+}

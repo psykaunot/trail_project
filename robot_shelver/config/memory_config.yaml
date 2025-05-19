@@ -1,0 +1,48 @@
+# Enhanced Semantic Book Memory Configuration
+
+# Paths and general settings
+paths:
+  memory_save: "semantic_forest_save.json"
+  
+# Book matching parameters
+matching:
+  threshold: 0.7                # Minimum matching score to consider books the same
+  confidence_update_rate: 0.8   # Rate at which confidence is updated for matched books
+  weights:
+    spatial: 0.6                # Weight of spatial similarity in matching
+    description: 0.3            # Weight of description similarity in matching
+    visual: 0.1                 # Weight of visual similarity in matching
+    temporal: 0.0               # Weight of temporal proximity in matching
+  spatial_threshold: 0.5        # Maximum distance (m) for spatial similarity
+  visual_threshold: 0.7         # Minimum visual similarity threshold
+  temporal_threshold: 120       # Time window (s) for temporal matching
+  confidence_decay: 0.95        # Rate at which confidence decays with partial matches
+
+# Spatial relationship tracking
+spatial:
+  proximity_threshold: 5.0      # Maximum distance (m) to track relationships
+  near_threshold: 0.5           # Distance (m) to consider objects "near"
+  stacking_threshold: 0.1       # Vertical distance (m) to consider stacking
+  alignment_threshold: 0.15     # Angle threshold (rad) for alignment detection
+  memory_limit: 200             # Maximum number of spatial relations to keep
+  
+# Search termination parameters
+search:
+  min_duration: 60              # Minimum search time (s) before considering termination
+  min_books: 3                  # Minimum number of books to find
+  coverage_threshold: 0.9       # Spatial coverage threshold for termination
+  efficiency_threshold: 0.1     # Minimum books/minute efficiency
+  
+# Agent parameters
+agent:
+  novelty_window: 30            # Time window (s) to assess novelty
+  novelty_count_threshold: 3    # Minimum new books in novelty window
+  
+# LLM integration
+llm:
+  model: "qwen3:8b"             # Default LLM model
+  summarization_context: 400    # Token context for summary generation
+  api_url: "http://localhost:11434/api/chat"  # Ollama API endpoint
+
+# Debug settings
+debug: true                     # Enable detailed debugging output

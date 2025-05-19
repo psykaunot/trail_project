@@ -29,6 +29,7 @@ _camera_reference_transforms = {}
 _joint_limits_cache = {}  # Cache for joint limits to avoid repeated calls
 _debug_mode = False  # Set to False to disable detailed debugging output
 _exploration_active = False
+_position_warnings_enabled = False  # For position constraint warnings
 
 # Define CORRECT gripper limits globally so they can be used in multiple functions
 LEFT_FINGER_MIN = 0.015
@@ -59,6 +60,15 @@ def set_exploration_active(active=True):
     global _exploration_active
     _exploration_active = active
     print(f"Exploration mode: {'ACTIVE' if active else 'INACTIVE'}")
+    
+    # Also update other flags for consistent behavior
+    global _is_arm_moving
+    if active:
+        # During exploration, arm should be at rest
+        _is_arm_moving = False
+    else:
+        # When not exploring, allow arm movement
+        _is_arm_moving = True
 
 # Utility: create a color camera sensor specification
 def make_cam(name, pos, ori):
@@ -632,6 +642,7 @@ def explore_with_collision_avoidance(sim, locobot, motor_ids, motor_settings, do
     """Move robot with collision avoidance using physics-based movement."""
     global _reference_position, _exploration_active
     
+    # Check if exploration is active
     if not _exploration_active:
         return False
     
@@ -1168,8 +1179,7 @@ def debug_navmesh(sim):
     return successes > 0
 
 
-# Add this to the top of environment.py
-_position_warnings_enabled = False  # Set to False to disable position warnings
+# Position warning state is controlled at the top level
 
 def enforce_robot_position_constraints(locobot, reference_position=None, max_y_drift=0.2):
     """Monitor and enforce robot position constraints during exploration."""
@@ -1178,7 +1188,13 @@ def enforce_robot_position_constraints(locobot, reference_position=None, max_y_d
     current_pos = locobot.translation
 
     # In exploration mode, strictly enforce y-axis (height)
-    if _exploration_active:
+    # Check exploration mode safely
+    try:
+        in_exploration = _exploration_active
+    except NameError:
+        in_exploration = False
+    
+    if in_exploration:
         # Always constrain height to floor level during exploration
         if current_pos[1] < -0.05 or current_pos[1] > 0.1:
             state = locobot.rigid_state
@@ -1227,7 +1243,7 @@ def run_simulator_step(
     Run one simulation step with enhanced stability for cameras and gripper.
     """
     global _reference_position, _reference_orientation, _last_command_time
-    global _is_arm_moving, _is_gripper_moving, _debug_mode, _last_link_print_time
+    global _is_arm_moving, _is_gripper_moving, _debug_mode, _exploration_active
     
     controller_command = None
     # Track command/state
@@ -1316,11 +1332,26 @@ def run_simulator_step(
         ord('n'): ("wrist_rotate", ARM_SPEED), ord('m'): ("wrist_rotate", -ARM_SPEED)
     }
     
-    # Always keep arm at rest position (arm control disabled for now)
-    hold_arm_at_rest(locobot, motor_ids, motor_settings, dof_map)
+    # Only hold arm at rest during exploration, not when picking is active
+    # Check if we have an active picking operation
+    active_picking = False
+    if camera_controller and hasattr(camera_controller, 'is_picking') and camera_controller.is_picking:
+        active_picking = True
+        # Mark picking is active and allow arm movement
+        _is_arm_moving = True
+        _is_gripper_moving = True
+        _exploration_active = False
+        _last_command_time = time.time()  # Reset timeout counter
+        print("DEBUG: Active picking operation detected, allowing arm movement and setting all relevant flags")
     
-    # Skip arm movement processing (disabled for now)
-    if False and key in arm_map and _is_arm_moving:
+    # Allow arm movement during picking operations
+    if not active_picking and not _is_arm_moving:
+        hold_arm_at_rest(locobot, motor_ids, motor_settings, dof_map)
+    elif _is_arm_moving:
+        print("DEBUG: Arm is moving, not enforcing rest position")
+    
+    # Process arm movement if arm is active
+    if key in arm_map and _is_arm_moving:
         joint_name, velocity = arm_map[key]
         
         if joint_name in dof_map:
@@ -1456,12 +1487,23 @@ def run_simulator_step(
     
     # Run physics with smaller substeps and active stabilization
     try:
-        # Split into smaller substeps for stability
+        # Set up default values and number of substeps based on exploration mode
+        exploration_mode = _exploration_active  # Use the global variable directly
+        num_substeps = 12  # Default for manipulation mode
+        
+        # If arm is moving, disable exploration mode
+        if _is_arm_moving:
+            _exploration_active = False
+            exploration_mode = False
+            # Print only when actually changing the mode to avoid spam
+            if _debug_mode:
+                print("Arm movement active - disabling exploration mode")
+        
         # Use different settings for exploration mode
-        if _exploration_active:
+        if exploration_mode:
             num_substeps = 4  # Fewer steps when in exploration mode
         else:
-            num_substeps = 12
+            num_substeps = 12  # More steps for better physics when manipulating
             
         substep_dt = dt / num_substeps
         enforce_robot_position_constraints(locobot, _reference_position, max_y_drift=1.0)
@@ -1496,7 +1538,13 @@ def run_simulator_step(
             stabilize_gripper_prop(locobot, dof_map, motor_ids, motor_settings)
             
             # Apply strict position constraint during exploration
-            if _exploration_active:
+            # Check exploration mode safely
+            try:
+                exploration_mode = _exploration_active
+            except NameError:
+                exploration_mode = False
+                
+            if exploration_mode:
                 current_pos = locobot.translation
                 if current_pos[1] < -0.05 or current_pos[1] > 0.1:
                     state = locobot.rigid_state

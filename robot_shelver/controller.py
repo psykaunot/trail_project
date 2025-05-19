@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import time
 import threading
 import queue
@@ -17,6 +18,11 @@ from typing import Dict, Tuple, Optional, Any
 
 from tools import get_tool_descriptions
 from memory.memory import BookExperienceMemory
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'Embodied_RAG'))
+from memory.semantic_memory import SemanticBookMemory
+# Import stubs instead to avoid OpenAI dependency
+from embodied_rag_stubs import EmbodiedRetriever
 
 class MissionState(Enum):
     SEARCH = auto()
@@ -109,23 +115,76 @@ class MissionStateMachine:
                         print("Max pick attempts reached, returning to search")
                         self.current_state = MissionState.SEARCH
                         self.pick_attempts = 0
+
+    def _update_mission_state(self):
+        """Update mission state using semantic memory insights."""
+        if self.state == MissionState.SEARCH:
+            # Check if we've found sufficient books
+            if hasattr(self.book_memory, 'get_memory_stats'):
+                memory_stats = self.book_memory.get_memory_stats()
+                
+                if memory_stats['total_unique_books'] >= 3:
+                    print(f"Found {memory_stats['total_unique_books']} books, transitioning to VALIDATE")
+                    self.state = MissionState.VALIDATE
+                    
+                    try:
+                        # Use Embodied RAG to determine most interesting book
+                        query = "Which is the most interesting book found so far?"
+                        results = self.embodied_rag.query(query, top_k=1)
+                        
+                        if isinstance(results, dict) and 'results' in results and results['results']:
+                            self.target_book = results['results'][0]
+                            print(f"Selected target book: {self.target_book.get('description', 'Unknown')}")
+                        else:
+                            print("Warning: No interesting books found by RAG query")
+                    except Exception as e:
+                        print(f"Error querying for interesting books: {e}")
+                        
+                        # Fallback: select the first book
+                        if hasattr(self.book_memory, 'semantic_forest'):
+                            book_nodes = [n for n in self.book_memory.semantic_forest.get_all_nodes() 
+                                          if n.node_type == 'book_instance']
+                            if book_nodes:
+                                node = book_nodes[0]
+                                self.target_book = {
+                                    "id": node.node_id,
+                                    "description": node.description,
+                                    "world_position": node.attributes.get("world_position")
+                                }
+                                print(f"Selected fallback target book: {self.target_book.get('description', 'Unknown')}")
                         
     def _attempt_pick(self):
         """Attempt to pick the target book."""
+        if not self.target_book:
+            print("Error: No target book specified for pick operation")
+            return False
+            
+        # Validate target book has position
+        if not self.target_book.get("world_position"):
+            print("Error: Target book has no world position")
+            return False
+            
         # Send pick command through the command queue
-        self.controller.command_queue.put({
-            'tool': '_execute_pick',
-            'params': {
-                'book_position': self.target_book["world_position"],
-                'book_object': self.target_book.get("object_ref")
-            }
-        })
-        
-        # Wait for result
         try:
-            result = self.controller.result_queue.get(timeout=10.0)
-            return result.get('success', False)
-        except:
+            self.controller.command_queue.put({
+                'tool': '_execute_pick',
+                'params': {
+                    'book_position': self.target_book["world_position"],
+                    'book_object': self.target_book.get("object_ref")
+                }
+            })
+            
+            # Wait for result with proper timeout and exception handling
+            try:
+                result = self.controller.result_queue.get(timeout=15.0)  # Allow more time for pick operation
+                success = result.get('success', False)
+                print(f"Pick operation {'succeeded' if success else 'failed'}: {result.get('message', '')}")
+                return success
+            except queue.Empty:
+                print("Pick operation timed out waiting for result")
+                return False
+        except Exception as e:
+            print(f"Error executing pick operation: {e}")
             return False
 
 
@@ -232,6 +291,17 @@ class Controller:
         """Update the current robot position and orientation."""
         self.robot_position = position
         self.robot_rotation = rotation
+        
+        # Update robot position in visualization tool if available
+        from tools import visualize_semantic_forest
+        if hasattr(visualize_semantic_forest, 'robot_position'):
+            visualize_semantic_forest.robot_position = position
+            
+        # Update robot position in memory system if available
+        if hasattr(self, 'book_search_agent') and hasattr(self.book_search_agent, 'book_memory'):
+            memory = self.book_search_agent.book_memory
+            if hasattr(memory, 'update_robot_position') and callable(memory.update_robot_position):
+                memory.update_robot_position(position)
     
     def update_perception(self, image=None, objects=None, scene_analysis=None):
         """Update perception data from vision systems."""
@@ -279,8 +349,19 @@ class Controller:
             llm_scan_command = self._generate_scan_command()
             pattern = llm_scan_command.get("pattern", "detailed")
         
-        # Start scanning
-        success = self.camera_controller.start_scanning(pattern_name=pattern)
+        # Start scanning with proper parameters
+        pause_time = 3.0  # Default pause time
+        if isinstance(pattern, dict) and "pause_time" in pattern:
+            pause_time = pattern.get("pause_time", 3.0)
+        elif hasattr(self, '_generate_scan_command') and isinstance(pattern, str):
+            scan_command = self._generate_scan_command()
+            pause_time = scan_command.get("pause_time", 3.0)
+            
+        # Start scanning with pattern and pause time
+        success = self.camera_controller.start_scanning(
+            pattern_name=pattern if isinstance(pattern, str) else pattern.get("pattern", "detailed"),
+            pause_time=pause_time
+        )
         
         if success:
             self.progress = f"Scanning with pattern: {pattern}"
@@ -630,22 +711,45 @@ class Controller:
         try:
             # Extract JSON from response
             import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            # More robust pattern to extract well-formed JSON
+            json_match = re.search(r'\{(?:[^{}]|"(?:\\.|[^"\\])*"|\{(?:[^{}]|"(?:\\.|[^"\\])*")*\})*\}', response, re.DOTALL)
+            
             if json_match:
-                command = json.loads(json_match.group(0))
-                
-                # Execute camera command
-                action = command.get("action", "").lower()
-                
-                if action in ["scan", "look_at", "sweep"]:
-                    self.execute_camera_command(command)
-                elif action == "investigate":
-                    object_name = command.get("parameters", {}).get("object")
-                    if object_name:
-                        self.investigate_object(object_name)
-                
-                # Update conversation history
-                self.conversation_history.append({"role": "assistant", "content": response})
+                try:
+                    json_str = json_match.group(0)
+                    # Clean up common JSON issues
+                    json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
+                    json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
+                    command = json.loads(json_str)
+                    
+                    # Execute camera command
+                    action = command.get("action", "").lower()
+                    
+                    if action in ["scan", "look_at", "sweep"]:
+                        self.execute_camera_command(command)
+                    elif action == "investigate":
+                        object_name = command.get("parameters", {}).get("object")
+                        if object_name:
+                            self.investigate_object(object_name)
+                    
+                    # Update conversation history
+                    self.conversation_history.append({"role": "assistant", "content": response})
+                except json.JSONDecodeError as e:
+                    print(f"JSON parsing error: {e} - Trying to fix format")
+                    # Try to clean up JSON
+                    try:
+                        # Remove problematic characters and try again
+                        clean_json = json_str.replace('\n', ' ').replace('\r', '')
+                        # Remove any trailing commas in objects/arrays
+                        clean_json = re.sub(r',\s*}', '}', clean_json)
+                        clean_json = re.sub(r',\s*]', ']', clean_json)
+                        command = json.loads(clean_json)
+                        if "action" in command:
+                            self.execute_camera_command(command)
+                    except Exception:
+                        print(f"Failed to fix JSON format: {json_str}")
+            else:
+                print("No valid JSON found in LLM response")
         except Exception as e:
             print(f"Error processing LLM action: {e}")
     
@@ -670,8 +774,8 @@ class Controller:
                 "stream": False
             }
             
-            # Make the API request
-            response = requests.post(self.api_url, json=payload)
+            # Make the API request with timeout
+            response = requests.post(self.api_url, json=payload, timeout=30.0)
             response.raise_for_status()
             result = response.json()
             
@@ -786,23 +890,22 @@ import queue
 class AutonomousBookSearchAgent:
     """Fully autonomous agent for book searching using camera control."""
     
-    def __init__(self, camera_controller, perception, sim, llm_model="qwen3:8b", 
-                 prompts_file="prompt.yaml", tool_descriptions=None, debug=False):
+    def __init__(self, camera_controller, perception, sim, 
+                 llm_model="qwen3:8b", prompts_file="prompt.yaml", 
+                 tool_descriptions=None, semantic_memory=None, config=None, debug=False):
         """Initialize the autonomous agent."""
         self.llm_model = llm_model
         self.api_url = "http://localhost:11434/api/chat"
-        
-        # Add the debug attribute that was missing
         self.debug = debug
         
         # Set components
         self.camera_controller = camera_controller
         self.perception = perception
         self.sim = sim
+        self.config = config or {}
         
         # Load YAML prompts
         self.prompt_templates = self._load_prompts(prompts_file)
-        
         self.tool_descriptions = tool_descriptions or "No tool descriptions available"
         
         # Thread-safe command queue
@@ -811,16 +914,51 @@ class AutonomousBookSearchAgent:
         
         # Mission state
         self.found_books = []
+        self.found_books_lock = threading.Lock()
         self.scanned_positions = []
         from enum import auto
         self.state = MissionState.SEARCH
-
         self.mission_active = False
         self.conversation_history = []
-
-        # Add memory system
-        self.book_memory = BookExperienceMemory(save_path="book_search_memory.json")
-
+        
+        # Initialize memory FIRST
+        # Use provided semantic memory or create default
+        if semantic_memory:
+            self.book_memory = semantic_memory
+        else:
+            # Add memory system - adapt to use SemanticBookMemory if available
+            try:
+                from memory.semantic_memory import SemanticBookMemory
+                self.book_memory = SemanticBookMemory(self.config)
+                print("Using enhanced Semantic Forest memory system")
+            except ImportError:
+                from memory.memory import BookExperienceMemory
+                self.book_memory = BookExperienceMemory(save_path="book_search_memory.json")
+                print("Using basic book experience memory system")
+        
+        # Use ONLY our stub implementation to avoid OpenAI dependency
+        print("Initializing Embodied RAG with Ollama-only stub implementation")
+        
+        # Import our stub implementation
+        from embodied_rag_stubs import EmbodiedRAG
+        self.embodied_rag = EmbodiedRAG(
+            llm_model=llm_model,
+            config=config,
+            semantic_memory=self.book_memory
+        )
+        
+        # Make sure to connect the semantic memory
+        if hasattr(self.embodied_rag, 'semantic_memory') and not self.embodied_rag.semantic_memory:
+            self.embodied_rag.semantic_memory = self.book_memory
+        
+        # Register visualization tools
+        from tools import visualize_semantic_forest
+        visualize_semantic_forest.forest = self.book_memory.semantic_forest
+        visualize_semantic_forest.robot_position = [0, 0, 0]  # Will be updated during mission
+        
+        # Add RAG capability to the agent
+        self._add_rag_capabilities()
+        
         # Add search statistics
         self.search_stats = {
             'total_detections': 0,
@@ -829,6 +967,31 @@ class AutonomousBookSearchAgent:
         }
         
         print("Autonomous Book Search Agent initialized")
+
+    
+    def _add_rag_capabilities(self):
+        """Add Embodied RAG capabilities to the agent."""
+        # Add RAG-specific tools to the tool registry
+        from tools import TOOL_REGISTRY
+
+        # Make sure we have the RAG query and analyze methods
+        if hasattr(self.embodied_rag, 'query') and hasattr(self.embodied_rag, 'analyze_spatial'):
+            # Add RAG tools to the agent's available tools
+            rag_tools = {
+                "query_books": self.embodied_rag.query,
+                "analyze_spatial_relationship": self.embodied_rag.analyze_spatial
+            }
+            
+            for name, tool in rag_tools.items():
+                TOOL_REGISTRY[name] = tool
+                print(f"Registered RAG tool: {name}")
+            
+            # Update tool descriptions
+            self.tool_descriptions += "\n\n== RAG Tools ==\n"
+            self.tool_descriptions += "query_books: Search for books using natural language\n"
+            self.tool_descriptions += "analyze_spatial_relationship: Analyze spatial relationships between books\n"
+        else:
+            print("WARNING: Embodied RAG does not have required methods - some tools will be unavailable")
     
     def start_mission(self):
         """Start the autonomous book search mission."""
@@ -848,12 +1011,24 @@ class AutonomousBookSearchAgent:
         # Execute ReAct loop
         self._execute_react_loop(initial_prompt)
         
-        self.book_memory.save_memory()
-        
-        print(f"\n===== Mission Complete =====")
-        print(f"Total unique books found: {len(self.found_books)}")
-        print(f"Memory saved to: {self.book_memory.save_path}")
-        print("===========================\n")
+        # Handle different memory classes
+        if hasattr(self.book_memory, 'save_memory'):
+            self.book_memory.save_memory()
+            print(f"\n===== Mission Complete =====")
+            print(f"Total unique books found: {len(self.found_books)}")
+            
+            # Get save path depending on memory type
+            if hasattr(self.book_memory, 'save_path'):
+                print(f"Memory saved to: {self.book_memory.save_path}")
+            else:
+                memory_save_path = self.config.get('paths', {}).get('memory_save', 'semantic_forest_save.json')
+                print(f"Memory saved to: {memory_save_path}")
+            
+            print("===========================\n")
+        else:
+            print(f"\n===== Mission Complete =====")
+            print(f"Total unique books found: {len(self.found_books)}")
+            print("===========================\n")
         
         return self.found_books
     
@@ -911,12 +1086,12 @@ class AutonomousBookSearchAgent:
 
             for book in books:
                 # Add to memory and check uniqueness
-                book_id, is_novel = self.book_memory.add_observation(book, camera_state)
+                node_id, is_novel = self.book_memory.add_observation(book, camera_state)
 
                 if is_novel:
                     unique_books.append(book)
                     self.search_stats['unique_books'] += 1
-                    print(f"New unique book found: {book_id}")
+                    print(f"New unique book found: {node_id}")
                 else:
                     self.search_stats['duplicate_rejections'] += 1
 
@@ -972,10 +1147,25 @@ class AutonomousBookSearchAgent:
             print(f"{'='*50}")  
 
             response = self._get_llm_response(prompt)
-            thought, action = self._parse_response(response)    
-
-            if thought:
-                print(f"\nThought: {thought}")  
+            
+            # Check if response contains an error message indicating LLM failure
+            if isinstance(response, str) and response.startswith("ERROR:"):
+                print("Detected LLM failure. Using fallback scanning action instead.")
+                # Create a fallback scanning action
+                action = {
+                    "tool": "start_scan",
+                    "parameters": {
+                        "pattern": "book_search",
+                        "pause_time": 3.0
+                    }
+                }
+                thought = "Using fallback scanning pattern since LLM is unavailable"
+                print(f"\nFallback Thought: {thought}")
+            else:
+                # Normal LLM response processing
+                thought, action = self._parse_response(response)    
+                if thought:
+                    print(f"\nThought: {thought}")  
 
             if action:
                 print(f"Action: {json.dumps(action)}")
@@ -1099,12 +1289,22 @@ class AutonomousBookSearchAgent:
             print("DEBUG: Payload prepared")
 
             print("DEBUG: Sending LLM request...")
-            # Make the actual API request
-            response = requests.post(self.api_url, json=payload)
-            print("DEBUG: Response received")
-
-            # Check for HTTP errors
-            response.raise_for_status()
+            # Make the actual API request with timeout
+            try:
+                print("DEBUG: Sending request to Ollama at", self.api_url)
+                response = requests.post(self.api_url, json=payload, timeout=30.0)
+                print(f"DEBUG: Response received with status code {response.status_code}")
+                
+                # Check for HTTP errors
+                response.raise_for_status()
+            except requests.exceptions.Timeout:
+                print("ERROR: LLM request timed out after 30 seconds. Is Ollama running?")
+                print("TIP: Start Ollama with 'ollama serve' in a separate terminal")
+                return "ERROR: LLM request timed out. Using fallback behavior."
+            except requests.exceptions.ConnectionError:
+                print("ERROR: Connection to Ollama failed. Is the server running at", self.api_url)
+                print("TIP: Start Ollama with 'ollama serve' in a separate terminal")
+                return "ERROR: Connection to LLM failed. Using fallback behavior."
 
             # Parse the JSON response
             response_json = response.json()
@@ -1142,51 +1342,48 @@ class AutonomousBookSearchAgent:
         
 
     def _clean_llm_response(self, response: str) -> str:
-        """
-        Clean up LLM response to prevent JSON parsing issues.
-        Removes extra content after JSON objects that often cause parsing errors.
-        """
+        """Clean up LLM response for JSON parsing with non-recursive approach."""
         if not response:
             return response
 
-        # Find complete JSON objects and remove any trailing content
-        if "{" in response and "}" in response:
-            # Track brace depth to find complete JSON objects
-            brace_count = 0
-            last_complete_json_end = -1
-            in_string = False
-            escape_next = False
-
-            for i, char in enumerate(response):
-                # Handle string literals to avoid counting braces inside strings
-                if char == '\\' and not escape_next:
-                    escape_next = True
-                    continue
-                
-                if char == '"' and not escape_next:
-                    in_string = not in_string
-
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            last_complete_json_end = i + 1
-
+        try:
+            # Find JSON object start and track nesting level
+            start = response.find('{')
+            if start >= 0:
+                brace_count = 0
+                in_string = False
                 escape_next = False
 
-            # If we found a complete JSON object, check for extra content
-            if last_complete_json_end > 0 and last_complete_json_end < len(response):
-                # Look for content after the JSON
-                remaining = response[last_complete_json_end:].strip()
+                for i in range(start, len(response)):
+                    if escape_next:
+                        escape_next = False
+                        continue
 
-                # Only trim if there's substantial non-JSON content
-                if remaining and not remaining.startswith('"') and not remaining.startswith('}'):
-                    print(f"DEBUG: Trimming extra content after JSON: {remaining[:50]}...")
-                    response = response[:last_complete_json_end]
+                    char = response[i]
+                    if char == '\\':
+                        escape_next = True
+                    elif char == '"' and not escape_next:
+                        in_string = not in_string
+                    elif not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                # Found complete JSON object
+                                potential_json = response[start:i+1]
+                                try:
+                                    # Verify it's valid JSON
+                                    parsed = json.loads(potential_json)
+                                    # Check if it has expected fields
+                                    if 'tool' in parsed or 'action' in parsed:
+                                        return potential_json
+                                except:
+                                    pass
+        except Exception as e:
+            print(f"Error in JSON cleaning: {e}")
 
-        return response.strip()
+        return response
         
     def _parse_response(self, response: str) -> Tuple[Optional[str], Optional[Dict]]:
         """
@@ -1195,30 +1392,30 @@ class AutonomousBookSearchAgent:
         """
         thought = None
         action = None
-        
+
         # Debug print to see what we're parsing
         if hasattr(self, 'debug') and self.debug:
             print(f"DEBUG: Raw response to parse: {response[:200]}...")
-        
+
         # First, let's try to clean the response
         response = response.strip()
-        
+
         # Extract thought - look for various patterns
         thought_patterns = [
             r'Thought:\s*(.*?)(?=Action:|{|$)',
             r'thinking:\s*(.*?)(?=Action:|{|$)',
             r'^\s*([^{]*?)(?={|Action:|$)'  # Any text before JSON or Action
         ]
-        
+
         for pattern in thought_patterns:
             match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
             if match:
                 thought = match.group(1).strip()
                 if thought:  # Only use if we found meaningful content
                     break
-                
+
         # Now let's find the action JSON with multiple strategies
-        
+
         # Strategy 1: Find JSON after "Action:" label
         action_match = re.search(r'Action:\s*({.*?})', response, re.DOTALL)
         if action_match:
@@ -1235,13 +1432,17 @@ class AutonomousBookSearchAgent:
                     # Fix trailing commas
                     json_str = re.sub(r',\s*}', '}', json_str)
                     json_str = re.sub(r',\s*]', ']', json_str)
+                    # Remove potential line breaks in string values
+                    json_str = re.sub(r':\s*"(.*?)"', lambda m: ':"' + m.group(1).replace('\n', ' ') + '"', json_str)
+                    # Clean up any other non-standard formatting
+                    json_str = json_str.replace('\n', ' ').replace('\r', '')
                     # Try parsing again
                     action = json.loads(json_str)
                 except json.JSONDecodeError as e:
                     if self.debug:
                         print(f"DEBUG: JSON parse error in strategy 1: {e}")
                         print(f"DEBUG: Attempted to parse: {json_str}")
-        
+
         # Strategy 2: Find the first complete JSON object anywhere in the response
         if not action:
             # Use a more sophisticated approach to find complete JSON objects
@@ -1250,22 +1451,22 @@ class AutonomousBookSearchAgent:
             brace_count = 0
             in_string = False
             escape_next = False
-            
+
             for i, char in enumerate(response):
                 # Handle escape characters
                 if escape_next:
                     escape_next = False
                     continue
-                    
+
                 if char == '\\':
                     escape_next = True
                     continue
-                    
+
                 # Handle string literals
                 if char == '"' and not escape_next:
                     in_string = not in_string
                     continue
-                    
+
                 # Count braces only outside of strings
                 if not in_string:
                     if char == '{':
@@ -1287,12 +1488,12 @@ class AutonomousBookSearchAgent:
                             except json.JSONDecodeError:
                                 # Try the next JSON object
                                 json_start = -1
-        
+
         # Strategy 3: Look for common action patterns in the text
         if not action and thought:
             # Try to infer action from the thought
             thought_lower = thought.lower()
-            
+
             if "scan" in thought_lower:
                 if "wide" in thought_lower:
                     action = {"tool": "start_scan", "parameters": {"pattern": "wide"}}
@@ -1302,12 +1503,12 @@ class AutonomousBookSearchAgent:
                     action = {"tool": "start_scan", "parameters": {"pattern": "book_search"}}
                 else:
                     action = {"tool": "start_scan", "parameters": {"pattern": "wide"}}
-                    
+
             elif "move" in thought_lower and "camera" in thought_lower:
                 # Try to extract pan/tilt values
                 pan_match = re.search(r'pan[:\s]*([-\d.]+)', thought, re.IGNORECASE)
                 tilt_match = re.search(r'tilt[:\s]*([-\d.]+)', thought, re.IGNORECASE)
-                
+
                 if pan_match or tilt_match:
                     params = {"absolute": True}
                     if pan_match:
@@ -1315,16 +1516,16 @@ class AutonomousBookSearchAgent:
                     if tilt_match:
                         params["tilt"] = float(tilt_match.group(1))
                     action = {"tool": "move_camera", "parameters": params}
-                    
+
             elif "examine" in thought_lower or "analyze" in thought_lower:
                 action = {"tool": "examine_area", "parameters": {"duration": 5.0}}
-        
+
         # Debug output if we couldn't parse an action
         if not action and self.debug:
             print(f"WARNING: Could not parse action from response")
             print(f"Extracted thought: {thought}")
             print(f"Full response: {response[:500]}...")
-        
+
         return thought, action
 
     def _should_complete_mission(self) -> bool:
@@ -1387,28 +1588,15 @@ class AutonomousBookSearchAgent:
         return unique_books
 
     def _update_book_tracking(self, observation: str):
-        """Modified to use memory-aware book checking."""
+        """Modified to use semantic forest"""
         match = re.search(r'Books found: (\d+)', observation)
         if match and int(match.group(1)) > 0:
-            # Use memory-aware checking
             unique_new_books = self._check_for_books()
 
-            # Add camera state
-            camera_state = self.camera_controller.get_current_state()
-            for book in unique_new_books:
-                book['found_at'] = {
-                    'pan': camera_state['pan'],
-                    'tilt': camera_state['tilt'],
-                    'timestamp': time.time()
-                }
-
-            # Update found books
-            with self.found_books_lock:
-                self.found_books.extend(unique_new_books)
-                current_count = len(self.found_books)
+            # No need to lock with the semantic forest
+            self.search_stats['total_detections'] += len(unique_new_books)
+            self.search_stats['unique_books'] += len(unique_new_books)
 
             if unique_new_books:
-                print(f"Found {len(unique_new_books)} new unique books! Total: {current_count}")
-
-
+                print(f"Found {len(unique_new_books)} new unique books!")
         

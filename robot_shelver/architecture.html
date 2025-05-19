@@ -123,6 +123,19 @@
           <li>Path planning to detected objects</li>
         </ul>
       </div>
+      
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="font-bold text-amber-600">Advanced Manipulation</h3>
+        <p class="text-sm text-gray-700 mb-2">Robotic arm control with joint unlocking system for book manipulation.</p>
+        <ul class="text-sm list-disc list-inside">
+          <li>Multi-method joint unlocking system</li>
+          <li>Ultra-high power motor settings (15000+ gain)</li>
+          <li>Camera-guided object alignment</li>
+          <li>Automatic stall detection and recovery</li>
+          <li>Motion type manipulation for stable physics</li>
+          <li>Gripper control with proper timing</li>
+        </ul>
+      </div>
     </div>
     
     <div class="mt-4 bg-white p-4 rounded-lg shadow">
@@ -132,9 +145,10 @@
         receives visual input through the Perception system (perception/perception.py), reasons about the next action 
         using an LLM, then executes camera movements (camera/camera_controller.py) to gather more information. 
         When books are detected, the system can plan navigation (navigation/) and manipulation (manipulation/pick_place_demo.py) 
-        sequences. All operations occur within a physics-accurate simulation (environment.py) that manages joint motors, 
-        collision detection, and realistic dynamics. The main loop (main.py) coordinates the entire system while 
-        maintaining visual feedback and recording capabilities.
+        sequences with the enhanced joint unlocking system. All operations occur within a physics-accurate simulation (environment.py) 
+        that manages joint motors with coordinated flag states, collision detection, and realistic dynamics. The enhanced manipulation 
+        system uses multiple methods to ensure joints remain unlocked and have sufficient power (15000+ gain, 150000+ impulse) to 
+        overcome physical constraints. The main loop (main.py) coordinates the entire system while maintaining visual feedback and recording capabilities.
       </p>
     </div>
   </div>
@@ -260,27 +274,31 @@
           folder: "root"
         },
         "environment.py": {
-          description: "Physics simulation setup and robot control loop",
+          description: "Physics simulation setup and robot control loop with enhanced flag management",
           functions: [
             "Robot initialization with joint motors",
-            "Physics parameter configuration",
+            "Global flag coordination for manipulation",
+            "Physics parameter configuration with optimized values",
             "Camera stabilization integration",
-            "Key input processing",
-            "Joint limit enforcement"
+            "Joint limit enforcement",
+            "Coordinated arm/exploration management",
+            "Motion state tracking with timeouts"
           ],
-          technologies: ["Habitat Physics", "Joint Motors", "URDF Loading", "NavMesh"],
+          technologies: ["Habitat Physics", "Joint Motors", "Flag Management", "URDF Loading", "NavMesh"],
           category: "core",
           folder: "root"
         },
         "tools.py": {
-          description: "Tool definitions for LLM agent to control camera",
+          description: "Tool definitions for LLM agent with enhanced manipulation capabilities",
           functions: [
             "start_scan: Begin systematic scanning",
             "move_camera: Direct camera movement",
             "examine_area: Focused observation",
-            "analyze_view: Request scene analysis"
+            "analyze_view: Request scene analysis",
+            "camera_guided_pick: Enhanced picking with joint unlocking",
+            "pick_object: Object selection and manipulation"
           ],
-          technologies: ["Tool Decorators", "JSON API", "Camera Integration"],
+          technologies: ["Tool Decorators", "JSON API", "Camera Integration", "Joint Unlocking"],
           category: "decision",
           folder: "root"
         },
@@ -361,15 +379,16 @@
           folder: "navigation"
         },
         "pick_place_demo.py": {
-          description: "Robotic manipulation for book grasping",
+          description: "Robotic manipulation for book grasping with enhanced joint unlocking",
           functions: [
-            "Multi-joint arm control",
+            "Multi-joint arm control with advanced unlocking",
+            "High-power joint motors (15000+ gain, 150000+ impulse)",
             "Gripper open/close sequences",
-            "Camera-guided alignment",
-            "Pick and place task execution",
-            "Object attachment physics"
+            "Camera-guided alignment with position adjustment",
+            "Multi-method joint mobility enforcement",
+            "Motion type manipulation for physics stability"
           ],
-          technologies: ["Arm Kinematics", "Gripper Control", "Task Sequencing"],
+          technologies: ["Arm Kinematics", "Joint Unlocking", "Motion Type Control", "Task Sequencing"],
           category: "manipulation",
           folder: "manipulation"
         },

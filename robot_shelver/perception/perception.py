@@ -10,7 +10,7 @@ import habitat_sim
 import magnum as mn
 
 class Perception:
-    def __init__(self, model_name="llava:7b", api_url="http://localhost:11434/api/chat"):
+    def __init__(self, model_name="yaniserrol/vlm-r1:latest", api_url="http://localhost:11434/api/chat"):
         """Initialize perception system with vision-language model integration."""
         self.model_name = model_name
         print(f"Using VLM model: {self.model_name}")
@@ -81,6 +81,35 @@ class Perception:
         except Exception as e:
             print(f"Error processing image with VLM: {e}")
             return f"Error: {str(e)}"
+        
+    def _preprocess_image(self, image, save_debug=False):
+        """Apply color correction to fix blueish tint."""
+        if image is None or image.size == 0 or image.ndim != 3 or image.shape[2] != 3:
+            return image
+            
+        # Apply color correction
+        r, g, b = cv2.split(image)
+        
+        # Stronger correction factors
+        gain_r = 1.5   # Increase red
+        gain_g = 1.3   # Increase green
+        gain_b = 0.7   # Decrease blue
+        
+        r = np.clip(r * gain_r, 0, 255).astype(np.uint8)
+        g = np.clip(g * gain_g, 0, 255).astype(np.uint8)
+        b = np.clip(b * gain_b, 0, 255).astype(np.uint8)
+        
+        processed = cv2.merge([r, g, b])
+        
+        if save_debug:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            debug_dir = os.path.join(self.log_dir, "color_correction")
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            cv2.imwrite(os.path.join(debug_dir, f"original_{timestamp}.png"), image)
+            cv2.imwrite(os.path.join(debug_dir, f"corrected_{timestamp}.png"), processed)
+            
+        return processed
     
     def log_image(self, image, description):
         """Log the image and its description for future analysis."""
@@ -88,6 +117,9 @@ class Perception:
         
         # Save the image
         img_path = os.path.join(self.log_dir, f"image_{timestamp}.png")
+        image_to_save = image.copy()
+        if image_to_save.shape[2] == 4: # Check if it has an alpha channel (RGBA)
+            image_to_save = cv2.cvtColor(image_to_save, cv2.COLOR_RGBA2BGR)
         cv2.imwrite(img_path, image)
         
         # Save the description
@@ -337,49 +369,142 @@ class Perception:
         return result
     
     def find_books_in_image(self, image):
-        prompt = """Look ONLY at objects on the floor or surfaces. Completely IGNORE the white robot gripper in the foreground.
-        
-        Find any book-shaped objects (rectangular with visible pages or spine). The book may be:
-        - Green colored
-        - Lying flat on the wooden floor
-        - Small compared to the robot gripper
-        
-        For EACH BOOK (not the robot):
-        Return a bounding box that tightly surrounds ONLY the book.
-        Format: [x_min, y_min, x_max, y_max] where values are 0-1.
-        
-        Example: [{"name": "book", "bbox": [0.3, 0.1, 0.5, 0.3], "color": "green"}]
-        
-        IMPORTANT: 
-        - Do NOT create boxes around the robot/gripper
-        - If unsure about exact coordinates, estimate based on the book's position
-        - Return [] if no books visible
         """
-        
-        books = self.detect_objects(image, prompt)
-        
-        # Enhanced debug logging
-        print(f"Raw VLM response: {json.dumps(books, indent=2)}")
-        
-        # If we get books, log the bbox format
-        if books and len(books) > 0:
-            print(f"First book bbox: {books[0].get('bbox')}")
-            print(f"Image dimensions: {image.shape}")
-        
-        # Rest of your existing saving logic
-        if books and any(book.get("bbox") and len(book["bbox"]) == 4 for book in books):
-            annotated_image = self.visualize_detections(image, books)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            img_path = os.path.join(self.log_dir, f"book_detection_{timestamp}.png")
-            cv2.imwrite(img_path, annotated_image)
-            print(f"Saved book detection image: {img_path}")
-        else:
+        Find books in the given image with enhanced color correction and robust detection.
+
+        Args:
+            image: Input image as numpy array
+
+        Returns:
+            List of dictionaries with book data
+        """
+        if image is None or image.size == 0:
+            print("Warning: Invalid image provided to find_books_in_image")
+            return []
+
+        try:
+            # Apply color correction to fix blueish tint
+            processed_image = self._preprocess_image(image, save_debug=True)
+
+            # Enhanced prompt with more specific guidance
+            prompt = """
+            Carefully inspect this image and find ALL books. Books may be:
+            - On the floor or any horizontal surface
+            - On shelves or vertical surfaces
+            - Green, brown, or other colors typical for books
+            - Different sizes (small to large)
+            - Partially visible or at odd angles
+            - May have visible pages, spine, or cover
+
+            IMPORTANT: IGNORE the robot arm/gripper if visible.
+
+            For EACH BOOK you find, provide:
+            1. A tight bounding box: [x_min, y_min, x_max, y_max] (all values 0-1)
+            2. A brief description of the book
+            3. Color if visible
+            4. Location (e.g., "on floor," "on shelf")
+
+            Return results as JSON array: [{"name": "book", "bbox": [0.3, 0.1, 0.5, 0.3], "description": "Green textbook on floor", "color": "green"}]
+
+            If NO books are visible, return an empty array: []
+            """
+
+            # First attempt with VLM-based object detection
+            print("Attempting primary book detection...")
+            books = self.detect_objects(processed_image, prompt)
+
+            # Enhanced debug logging
+            print(f"Raw VLM response: {json.dumps(books, indent=2)}")
+
+            # Verify and validate detected books
+            valid_books = []
+            for i, book in enumerate(books):
+                bbox = book.get("bbox")
+                if not bbox or len(bbox) != 4:
+                    print(f"Warning: Book {i} has invalid bbox: {bbox}")
+                    continue
+
+                # Validate bbox coordinates are within range
+                if all(0 <= coord <= 1 for coord in bbox) and bbox[0] < bbox[2] and bbox[1] < bbox[3]:
+                    valid_books.append(book)
+                else:
+                    print(f"Warning: Book {i} has out-of-range bbox: {bbox}")
+
+            # If we found valid books, log and visualize them
+            if valid_books:
+                print(f"Found {len(valid_books)} valid books")
+                for i, book in enumerate(valid_books):
+                    print(f"Book {i+1}: {book.get('description', 'No description')}")
+                    print(f"  Bbox: {book['bbox']}")
+
+                # Visualize the detections
+                annotated_image = self.visualize_detections(processed_image, valid_books)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                img_path = os.path.join(self.log_dir, f"book_detection_{timestamp}.png")
+                cv2.imwrite(img_path, annotated_image)
+                print(f"Saved book detection image: {img_path}")
+                return valid_books
+
+            # If no valid books found, try fallback detection with a simpler prompt
+            print("No valid books found, trying fallback detection...")
+            fallback_prompt = """
+            Focus ONLY on finding books in this image.
+            A book typically has a rectangular shape with visible spine or pages.
+
+            For each book, provide the bounding box coordinates as [x_min, y_min, x_max, y_max] 
+            where all values are between 0 and 1.
+
+            Return results as: [{"name": "book", "bbox": [0.3, 0.1, 0.5, 0.3]}]
+
+            If no books are visible, return []
+            """
+
+            fallback_books = self.detect_objects(processed_image, fallback_prompt)
+            print(f"Fallback detection results: {json.dumps(fallback_books, indent=2)}")
+
+            # Validate fallback results
+            valid_fallback = []
+            for i, book in enumerate(fallback_books):
+                bbox = book.get("bbox")
+                if bbox and len(bbox) == 4 and all(0 <= coord <= 1 for coord in bbox) and bbox[0] < bbox[2] and bbox[1] < bbox[3]:
+                    valid_fallback.append(book)
+
+            if valid_fallback:
+                print(f"Fallback detection found {len(valid_fallback)} books")
+                annotated_image = self.visualize_detections(processed_image, valid_fallback)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                img_path = os.path.join(self.log_dir, f"book_fallback_{timestamp}.png")
+                cv2.imwrite(img_path, annotated_image)
+                return valid_fallback
+
+            # If still no books found, save raw image for debugging
+            print("No books found in image")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             img_path = os.path.join(self.log_dir, f"book_raw_{timestamp}.png")
-            cv2.imwrite(img_path, image)
-            print(f"No valid bbox, saved raw image: {img_path}")
-        
-        return books
+            cv2.imwrite(img_path, processed_image)
+            print(f"No valid bbox, saved processed image: {img_path}")
+
+            # Also save the original image for comparison
+            orig_path = os.path.join(self.log_dir, f"book_raw_orig_{timestamp}.png")
+            cv2.imwrite(orig_path, image)
+
+            return []
+
+        except Exception as e:
+            print(f"Error in book detection: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Save error case image
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                img_path = os.path.join(self.log_dir, f"book_error_{timestamp}.png")
+                cv2.imwrite(img_path, image)
+                print(f"Error in detection, saved image: {img_path}")
+            except:
+                print("Could not save error image")
+
+            return []
     
     def get_book_position(self, book_bbox):
         """
