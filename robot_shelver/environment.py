@@ -80,6 +80,21 @@ def make_cam(name, pos, ori):
     cam.orientation = mn.Vector3(*ori)
     return cam
 
+
+def unlock_arm_for_picking(force=True):
+    """Force unlock arm joints for picking operations"""
+    global _is_arm_moving, _is_gripper_moving, _exploration_active, _last_command_time
+    
+    # Force flags to allow movement
+    _is_arm_moving = True
+    _is_gripper_moving = True
+    _exploration_active = False
+    _last_command_time = time.time()
+    
+    print(f"ARM UNLOCKED FOR PICKING: _is_arm_moving={_is_arm_moving}, _is_gripper_moving={_is_gripper_moving}")
+    return True
+
+
 def fix_ar_tag_position(locobot):
     """Force AR tag to maintain fixed position relative to parent with improved stability."""
     try:

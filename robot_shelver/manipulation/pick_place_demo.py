@@ -483,7 +483,18 @@ class PickAndPlaceTask:
         """Update semantic memory with book placement information."""
         try:
             sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from main import book_search_agent
+            import importlib
+            main_module = importlib.import_module("main")
+            
+            # Try to access semantic_memory directly if book_search_agent doesn't exist
+            if hasattr(main_module, 'book_search_agent'):
+                book_search_agent = main_module.book_search_agent
+            else:
+                # If book_search_agent not found, create a placeholder with needed attributes
+                class DummyAgent:
+                    def __init__(self):
+                        self.book_memory = main_module.semantic_memory if hasattr(main_module, 'semantic_memory') else None
+                book_search_agent = DummyAgent()
             
             if hasattr(book_search_agent, 'book_memory'):
                 memory = book_search_agent.book_memory
@@ -630,10 +641,12 @@ class PickAndPlaceTask:
             obs = self.sim.get_sensor_observations()
             rgb_img = obs['robot_rgb'].copy()
             
-            # Create perception instance if needed
             if not hasattr(self, 'perception'):
-                from perception import Perception
-                self.perception = Perception(model_name="llava-phi3")
+                import sys
+                import os
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from perception.perception import Perception
+                self.perception = Perception(model_name="yaniserrol/vlm-r1:latest")
                 self.perception.set_camera_params(self.sim, "robot_rgb")
             
             # Detect books in view
@@ -646,10 +659,25 @@ class PickAndPlaceTask:
             book = books[0]
             
             # Get 3D position of the book
-            book_pos = self.perception.get_book_position(book['bbox'])
+            book_pos_result = self.perception.get_book_position(book['bbox'])
+            if isinstance(book_pos_result, tuple) and len(book_pos_result) >= 1:
+                # Handle case where function returns (world_pos, book_obj)
+                book_pos = book_pos_result[0]
+            else:
+                # Handle case where function returns just world_pos
+                book_pos = book_pos_result
+                
             if book_pos is None:
                 print("Could not determine book position")
                 return False
+            
+            # Check if book_pos is a Vector3 or a list/tuple
+            if not isinstance(book_pos, mn.Vector3):
+                if isinstance(book_pos, (list, tuple)) and len(book_pos) >= 3:
+                    book_pos = mn.Vector3(book_pos[0], book_pos[1], book_pos[2])
+                else:
+                    print(f"Invalid book position format: {type(book_pos)}")
+                    return False
             
             # Validate position (prevent unrealistic values)
             if abs(book_pos.x) > 3 or abs(book_pos.z) > 3 or book_pos.y > 1.5:
@@ -724,196 +752,180 @@ class PickAndPlaceTask:
 
     def camera_guided_grasp(self):
         """Use camera feedback to guide book grasping with improved precision."""
-        print("\n========== DEBUGGING ARM MOVEMENT ==========")
-        print("Starting enhanced camera-guided grasp sequence")
-        
-        # First, check if the arm can move at all by directly accessing _is_arm_moving
-        import sys
-        sys.path.append("..")
+        print("\n===== STARTING ENHANCED CAMERA-GUIDED GRASP =====")
+
+        # CRITICAL: Force unlock all arm movement flags at environment level
         try:
-            from environment import _is_arm_moving
-            print(f"CRITICAL: Current _is_arm_moving flag state: {_is_arm_moving}")
-            # Force arm movement to be enabled
+            # First try direct module reference
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+            # Direct environment flag modification
             import environment
+            # Force ALL movement flags to allow arm control
             environment._is_arm_moving = True
-            print(f"CRITICAL: Manually set _is_arm_moving flag to: {environment._is_arm_moving}")
-            
-            # Set global flag variables directly in the environment module
-            # This is crucial for the RL picking policy in Habitat
-            print("Setting ALL relevant environment flags to enable arm movement")
             environment._is_gripper_moving = True
-            # Check if additional flags need to be set
-            if hasattr(environment, '_exploration_active'):
-                environment._exploration_active = False
-                print(f"Set _exploration_active flag to: {environment._exploration_active}")
-            
-            # Reset any timeout counters that might be preventing arm movement
-            if hasattr(environment, '_last_command_time'):
-                environment._last_command_time = sys.float_info.max  # Force high value
-                print("Reset command timeout counter")
-        except ImportError:
-            print("CRITICAL: Could not import environment module to check arm movement flag")
+            environment._exploration_active = False
+            environment._last_command_time = time.time() + 100.0  # Prevent timeout
+
+            print(f"VERIFIED ARM FLAGS: _is_arm_moving={environment._is_arm_moving}, "
+                  f"_is_gripper_moving={environment._is_gripper_moving}")
+
+            # If environment has a disable_arm_rest function, call it
+            if hasattr(environment, 'disable_arm_rest'):
+                environment.disable_arm_rest(True)
+                print("Disabled arm rest position enforcement")
         except Exception as e:
-            print(f"CRITICAL: Error accessing arm movement flag: {e}")
+            print(f"CRITICAL: Could not modify environment flags: {e}")
             import traceback
             traceback.print_exc()
-        
-        # Set the picking flag in the camera controller if available
+
+        # Set camera controller to picking mode
         try:
-            from main import camera_controller
-            if camera_controller:
-                try:
-                    camera_controller.is_picking = True
-                    print("DEBUG: Set is_picking flag to True in camera controller")
-                    
-                    # Also try to directly modify the environment's flags through the camera controller
-                    if hasattr(camera_controller, '_camera_env') and hasattr(camera_controller._camera_env, '_is_arm_moving'):
-                        camera_controller._camera_env._is_arm_moving = True
-                        print("DEBUG: Set _is_arm_moving flag to True via camera controller")
-                        
-                except Exception as e:
-                    print(f"Error setting picking flag: {e}")
+            import importlib
+            main_module = importlib.import_module("main")
+            
+            # Try to access camera_controller directly if it exists
+            if hasattr(main_module, 'camera_controller'):
+                camera_controller = main_module.camera_controller
             else:
-                print("CRITICAL: camera_controller not available from main!")
+                print("Camera controller not available in main module")
+            if camera_controller:
+                camera_controller.is_picking = True
+                print("Set camera controller to picking mode")
+
+                # Also try to directly modify the environment's flags through the camera controller
+                if hasattr(camera_controller, '_camera_env'):
+                    camera_controller._camera_env._is_arm_moving = True
+                    camera_controller._camera_env._is_gripper_moving = True
+                    print("Updated environment flags through camera controller")
         except Exception as e:
-            print(f"CRITICAL: Error importing camera_controller from main: {e}")
-            
-        # Print debug for robot joints and motor settings
+            print(f"Warning: Could not set camera controller flags: {e}")
+
+        # FORCIBLY UNLOCK ALL ARM JOINTS
+        print("\n===== UNLOCKING ALL ARM JOINTS WITH MULTIPLE METHODS =====")
+        arm_joints = ["waist", "shoulder", "elbow", "forearm_roll", "wrist_angle", "wrist_rotate"]
+
+        # METHOD 1: Force joint type change
         try:
-            print("\nDEBUGGING ROBOT JOINTS:")
-            locked_joints = []
-            for joint_name in self.arm_joints:
+            print("METHOD 1: Changing joint types to Revolute")
+            for joint_name in arm_joints:
                 if joint_name in self.dof_map:
                     joint_id = self.dof_map[joint_name]
-                    pos_offset = self.locobot.get_link_joint_pos_offset(joint_id)
-                    if pos_offset >= 0:
-                        current_pos = self.locobot.joint_positions[pos_offset]
-                        print(f"  {joint_name}: {current_pos:.4f}")
-                        
-                        # Check joint motor settings
-                        if hasattr(self, 'motor_settings') and joint_id in self.motor_settings:
-                            motor = self.motor_settings[joint_id]
-                            print(f"    Motor settings - target: {motor.position_target:.4f}, gain: {motor.position_gain:.1f}, max impulse: {motor.max_impulse:.1f}")
-                        
-                        # Check if joint is locked
-                        joint_type = self.locobot.get_link_joint_type(joint_id)
-                        is_locked = joint_type == habitat_sim.physics.JointType.Fixed
-                        if is_locked:
-                            locked_joints.append(joint_name)
-                            print(f"    *** WARNING: {joint_name} is LOCKED (type: {joint_type}) ***")
-                        
-            print("\nDEBUGGING GRIPPER JOINTS:")
-            for joint_name in self.gripper_joints:
-                if joint_name in self.dof_map:
-                    joint_id = self.dof_map[joint_name]
-                    pos_offset = self.locobot.get_link_joint_pos_offset(joint_id)
-                    if pos_offset >= 0:
-                        current_pos = self.locobot.joint_positions[pos_offset]
-                        print(f"  {joint_name}: {current_pos:.4f}")
-                        
-                        # Check if joint is locked
-                        joint_type = self.locobot.get_link_joint_type(joint_id)
-                        is_locked = joint_type == habitat_sim.physics.JointType.Fixed
-                        if is_locked:
-                            locked_joints.append(joint_name)
-                            print(f"    *** WARNING: {joint_name} is LOCKED (type: {joint_type}) ***")
-            
-            # Check joint velocity states
-            print("\nDEBUGGING JOINT VELOCITIES:")
-            for joint_name in self.arm_joints:
-                if joint_name in self.dof_map:
-                    joint_id = self.dof_map[joint_name]
-                    vel_offset = self.locobot.get_link_joint_vel_offset(joint_id)
-                    if vel_offset >= 0:
-                        current_vel = self.locobot.joint_velocities[vel_offset]
-                        print(f"  {joint_name} velocity: {current_vel:.4f}")
-            
-            # Attempt to unlock any locked joints
-            if locked_joints:
-                print("\nATTEMPTING TO UNLOCK LOCKED JOINTS:")
-                for joint_name in locked_joints:
-                    print(f"  Unlocking {joint_name}...")
-                    joint_id = self.dof_map[joint_name]
-                    
-                    # Force joint type to revolute
-                    try:
-                        # Method 1: Try to directly change joint type
-                        if hasattr(self.locobot, 'set_link_joint_type'):
-                            self.locobot.set_link_joint_type(joint_id, habitat_sim.physics.JointType.Revolute)
-                            print(f"    Successfully changed {joint_name} type to Revolute")
-                    except Exception as e:
-                        print(f"    Error changing joint type: {e}")
-                    
-                    # Method 2: Modify joint motor settings with extreme values
-                    try:
-                        # Set extremely high motor force
-                        if joint_id in self.motor_ids:
-                            motor_settings = habitat_sim.physics.JointMotorSettings(
-                                position_target=0.0,
-                                position_gain=10000.0,    # Extreme position gain
-                                velocity_target=0.0,
-                                velocity_gain=500.0,      # High damping
-                                max_impulse=100000.0      # Extremely high force
-                            )
-                            self.locobot.update_joint_motor(self.motor_ids[joint_id], motor_settings)
-                            print(f"    Applied extreme motor settings to {joint_name}")
-                            
-                            # Step physics to apply settings
-                            for _ in range(5):
-                                self.sim.step_physics(1/60.0)
-                    except Exception as e:
-                        print(f"    Error applying motor settings: {e}")
-                        
-                    # Method 3: Try direct position modification
-                    try:
-                        pos_offset = self.locobot.get_link_joint_pos_offset(joint_id)
-                        if pos_offset >= 0:
-                            # Get current position
-                            positions = self.locobot.joint_positions
-                            current_pos = positions[pos_offset]
-                            
-                            # Slightly modify position to force update
-                            new_pos = current_pos + 0.01
-                            positions[pos_offset] = new_pos
-                            self.locobot.joint_positions = positions
-                            print(f"    Forced position change for {joint_name} from {current_pos:.4f} to {new_pos:.4f}")
-                            
-                            # Step physics to apply change
-                            for _ in range(5):
-                                self.sim.step_physics(1/60.0)
-                    except Exception as e:
-                        print(f"    Error forcing position change: {e}")
-            
-            # Verify if unlocking was successful
-            print("\nVERIFYING JOINT STATUS AFTER UNLOCKING:")
-            for joint_name in self.arm_joints + self.gripper_joints:
-                if joint_name in self.dof_map:
-                    joint_id = self.dof_map[joint_name]
-                    joint_type = self.locobot.get_link_joint_type(joint_id)
-                    is_locked = joint_type == habitat_sim.physics.JointType.Fixed
-                    print(f"  {joint_name}: {'STILL LOCKED' if is_locked else 'UNLOCKED/MOVABLE'} (type: {joint_type})")
-                    
+
+                    # Directly change joint type
+                    if hasattr(self.locobot, 'set_link_joint_type'):
+                        original_type = self.locobot.get_link_joint_type(joint_id)
+                        self.locobot.set_link_joint_type(joint_id, habitat_sim.physics.JointType.Revolute)
+                        print(f"  {joint_name}: changed from {original_type} to {self.locobot.get_link_joint_type(joint_id)}")
         except Exception as e:
-            print(f"Error debugging and unlocking robot joints: {e}")
-            import traceback
-            traceback.print_exc()
-                
-        print("============================================\n")
+            print(f"Error in Method 1: {e}")
+
+        # METHOD 2: Apply extreme motor settings
+        try:
+            print("METHOD 2: Applying extreme motor settings")
+            for joint_name in arm_joints:
+                if joint_name in self.dof_map:
+                    joint_id = self.dof_map[joint_name]
+
+                    # Configure ultra-high power motor
+                    self.motor_settings[joint_id] = habitat_sim.physics.JointMotorSettings(
+                        position_target=0.0,        # Use neutral position
+                        position_gain=10000.0,      # EXTREME position gain (10x normal)
+                        velocity_target=0.0,
+                        velocity_gain=1000.0,       # Very high damping
+                        max_impulse=100000.0        # MASSIVE force (100x normal)
+                    )
+
+                    # Apply these settings immediately
+                    if joint_id in self.motor_ids:
+                        self.locobot.update_joint_motor(self.motor_ids[joint_id], self.motor_settings[joint_id])
+                        print(f"  {joint_name}: Set extreme motor settings")
+        except Exception as e:
+            print(f"Error in Method 2: {e}")
+
+        # METHOD 3: Direct joint position wiggling
+        try:
+            print("METHOD 3: Force position change to break any locks")
+            for joint_name in arm_joints:
+                if joint_name in self.dof_map:
+                    joint_id = self.dof_map[joint_name]
+                    pos_offset = self.locobot.get_link_joint_pos_offset(joint_id)
+
+                    if pos_offset >= 0:
+                        # Get current position
+                        joint_positions = self.locobot.joint_positions
+                        current_pos = joint_positions[pos_offset]
+
+                        # Apply a large wiggle to break any locks
+                        for delta in [0.1, -0.2, 0.1]:  # Large alternating movements
+                            joint_positions[pos_offset] = current_pos + delta
+                            self.locobot.joint_positions = joint_positions
+                            print(f"  {joint_name}: Forced position {current_pos} -> {current_pos + delta}")
+
+                            # Step physics to apply changes
+                            for _ in range(5):
+                                self.sim.step_physics(1/100.0)
+        except Exception as e:
+            print(f"Error in Method 3: {e}")
+
+        # METHOD 4: Motion type override
+        try:
+            print("METHOD 4: Setting motion types to KINEMATIC")
+            for joint_name in arm_joints:
+                if joint_name in self.dof_map:
+                    joint_id = self.dof_map[joint_name]
+
+                    # Get link object and set motion type
+                    link_obj = self.locobot.get_link_object(joint_id)
+                    if link_obj and hasattr(link_obj, 'motion_type'):
+                        original_type = link_obj.motion_type
+                        link_obj.motion_type = habitat_sim.physics.MotionType.KINEMATIC
+                        print(f"  {joint_name}: Set motion type {original_type} -> KINEMATIC")
+        except Exception as e:
+            print(f"Error in Method 4: {e}")
+
+        # Verification step
+        print("\nVERIFYING JOINT STATUS AFTER UNLOCKING:")
+        for joint_name in arm_joints:
+            if joint_name in self.dof_map:
+                joint_id = self.dof_map[joint_name]
+                joint_type = self.locobot.get_link_joint_type(joint_id)
+                is_locked = joint_type == habitat_sim.physics.JointType.Fixed
+                print(f"  {joint_name}: {'STILL LOCKED' if is_locked else 'UNLOCKED'} (type: {joint_type})")
+
+        print("===== ARM UNLOCKING COMPLETE =====\n")
 
         # Check if book object is available
         if self.book_object is None:
             print("WARNING: No book object provided for camera-guided grasp")
             print("Attempting to search for books in the scene...")
-            
+
             # Try to find any book object in the scene
             self._find_book_object()
-            
+
             if self.book_object is None:
                 print("ERROR: Could not find any book object for grasping")
+
+                # Reset picking flag
+                try:
+                    import importlib
+                    main_module = importlib.import_module("main")
+                    
+                    # Try to access camera_controller directly if it exists
+                    if hasattr(main_module, 'camera_controller'):
+                        camera_controller = main_module.camera_controller
+                        if camera_controller:
+                            camera_controller.is_picking = False
+                    else:
+                        print("Camera controller not available in main module")
+                except:
+                    pass
+
                 return False
         else:
-            print(f"Book object provided at position: {self.book_object.translation}")
-            
+            print(f"Using provided book object at position: {self.book_object.translation}")
+
         # Print book object properties
         try:
             print(f"Book object ID: {self.book_object.object_id}")
@@ -921,27 +933,27 @@ class PickAndPlaceTask:
             print(f"Book object motion type: {self.book_object.motion_type}")
         except Exception as e:
             print(f"Error accessing book object properties: {e}")
-            
+
         # Move arm carefully to pre-grasp position
         print("Moving to pre-grasp position...")
-        
+
         # First go to a safe position
         try:
             # Make movements smaller and more careful
             print("Moving to safe initial position...")
             self.move_arm_joint("waist", 0.0)  # Center waist
             time.sleep(0.1)
-            
+
             self.move_arm_joint("shoulder", 0.0)  # Lower shoulder 
             time.sleep(0.1)
-            
+
             # Then move to pre-grasp in steps
             self.move_to_pre_grasp_position()
         except Exception as e:
             print(f"Error in pre-grasp positioning: {e}")
             import traceback
             traceback.print_exc()
-            
+
         # Open gripper
         self.open_gripper()
         time.sleep(0.1)
@@ -951,11 +963,11 @@ class PickAndPlaceTask:
             # Get book position and orient arm toward it
             book_pos = self.book_object.translation
             robot_pos = self.locobot.translation
-            
+
             # Calculate direction to book
             dir_x = book_pos[0] - robot_pos[0]
             dir_z = book_pos[2] - robot_pos[2]
-            
+
             # Calculate waist angle to face book
             target_waist = np.arctan2(dir_x, dir_z)
             print(f"Rotating waist to {target_waist:.2f} to face book")
@@ -963,7 +975,7 @@ class PickAndPlaceTask:
             time.sleep(0.2)
         except Exception as e:
             print(f"Error orienting toward book: {e}")
-            
+
         # Use camera to fine-tune alignment
         try:
             alignment_success = self._align_with_camera()
@@ -977,18 +989,18 @@ class PickAndPlaceTask:
             print(f"Error in camera alignment: {e}")
             import traceback
             traceback.print_exc()
-        
+
         # Lower arm to grasp position with careful movements
         print("Moving to grasp position...")
         try:
             self.move_arm_joint("shoulder", 0.2, wait=True)  # Lower shoulder
             self.sim.step_physics(0.05)  # Small pause
             time.sleep(0.2)
-            
+
             self.move_arm_joint("elbow", 0.8, wait=True)     # Extend elbow 
             self.sim.step_physics(0.05)  # Small pause
             time.sleep(0.2)
-            
+
             self.move_arm_joint("wrist_angle", 0.5, wait=True)  # Tilt wrist down
             time.sleep(0.2)
         except Exception as e:
@@ -997,11 +1009,11 @@ class PickAndPlaceTask:
         # Step physics to stabilize
         for _ in range(10):
             self.sim.step_physics(1/60.0)
-            
+
         # Close gripper with increased force
         print("Closing gripper...")
         self.close_gripper()
-        
+
         # Wait for gripper to fully close
         for _ in range(20):
             self.sim.step_physics(1/60.0)
@@ -1014,15 +1026,15 @@ class PickAndPlaceTask:
                 print("Attaching book to gripper...")
                 # Save the original motion type
                 original_motion_type = self.book_object.motion_type
-                
+
                 # Make book kinematic for manipulation
                 self.book_object.motion_type = habitat_sim.physics.MotionType.KINEMATIC
                 self.attached_object = self.book_object
-                
+
                 # Log original position for memory tracking
                 self.original_book_position = list(self.book_object.translation)
                 print(f"Recorded original book position: {self.original_book_position}")
-                
+
                 # Check if attachment was successful
                 wrist_link_id = self.dof_map.get("wrist_angle", -1)
                 if wrist_link_id != -1:
@@ -1034,7 +1046,7 @@ class PickAndPlaceTask:
                         wrist_node.translation[2] - book_pos[2]
                     ]))
                     print(f"Book distance from wrist: {distance:.3f} m")
-                    
+
                     # Adjust book position if needed
                     if distance > 0.3:
                         print("Warning: Book appears to be far from gripper, adjusting...")
@@ -1042,11 +1054,11 @@ class PickAndPlaceTask:
                         book_state = self.book_object.rigid_state
                         book_state.translation = wrist_node.translation - mn.Vector3(0, 0.05, 0)
                         self.book_object.rigid_state = book_state
-                        
+
                         # Update the adjusted position in our tracking
                         self.original_book_position = list(book_state.translation)
                         print(f"Updated book pickup position: {self.original_book_position}")
-                        
+
                     # If close enough, consider attachment successful
                     attach_success = True
             except Exception as e:
@@ -1061,14 +1073,14 @@ class PickAndPlaceTask:
                 self.move_arm_joint("shoulder", 0.4, wait=True)  # Raise shoulder a bit
                 self.sim.step_physics(0.1)  # Longer pause
                 time.sleep(0.2)
-                
+
                 self.move_arm_joint("elbow", 1.0, wait=True)  # Adjust elbow
                 self.sim.step_physics(0.1)  # Longer pause
                 time.sleep(0.2)
-                
+
                 self.move_arm_joint("shoulder", 0.7, wait=True)  # Raise shoulder more
                 time.sleep(0.2)
-                
+
                 # Update attached object position
                 self.update_attached_object()
             except Exception as e:
@@ -1077,12 +1089,23 @@ class PickAndPlaceTask:
                 traceback.print_exc()
         else:
             print("Did not lift object because attachment was not successful")
-        
+
         # Update semantic memory if available with enhanced tracking
         try:
             sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from main import book_search_agent
+            import importlib
+            main_module = importlib.import_module("main")
             
+            # Try to access semantic_memory directly if book_search_agent doesn't exist
+            if hasattr(main_module, 'book_search_agent'):
+                book_search_agent = main_module.book_search_agent
+            else:
+                # If book_search_agent not found, create a placeholder with needed attributes
+                class DummyAgent:
+                    def __init__(self):
+                        self.book_memory = main_module.semantic_memory if hasattr(main_module, 'semantic_memory') else None
+                book_search_agent = DummyAgent()
+
             if hasattr(book_search_agent, 'book_memory'):
                 # Record pick action in memory
                 memory = book_search_agent.book_memory
@@ -1095,42 +1118,48 @@ class PickAndPlaceTask:
                     else:
                         position = self.book_object.translation if self.book_object else None
                         print(f"Using current book position for memory: {position}")
-                        
+
                     if position:
                         # Convert position to list if it's not already
                         if not isinstance(position, list):
                             position = list(position)
-                            
+
                         success = memory.record_pick_action(position)
                         print(f"Recorded pick action in memory system: {'Success' if success else 'Failed'}")
-                        
-                        # Add additional debug info for book matching
-                        if hasattr(memory, 'observation_stats'):
-                            print(f"Memory stats: {memory.observation_stats['unique_books']} unique books, "
-                                  f"{memory.observation_stats['duplicate_matches']} duplicates")
         except Exception as e:
             print(f"Warning: Could not update memory with pick action: {e}")
             import traceback
             traceback.print_exc()
 
-        print("Enhanced camera-guided grasp completed")
-        
-        # Reset the picking flag in the camera controller
-        from main import camera_controller
-        if camera_controller:
-            try:
+        # IMPORTANT: Reset all flags to previous state
+        try:
+            # Reset camera controller flag
+            import importlib
+            main_module = importlib.import_module("main")
+            
+            # Try to access camera_controller directly if it exists
+            if hasattr(main_module, 'camera_controller'):
+                camera_controller = main_module.camera_controller
+            else:
+                print("Camera controller not available in main module")
+            if camera_controller:
                 camera_controller.is_picking = False
-                print("DEBUG: Reset is_picking flag to False in camera controller")
-            except Exception as e:
-                print(f"Error resetting picking flag: {e}")
-        
+                print("Reset camera controller is_picking flag")
+
+            # Reset environment flags if we changed them
+            import environment
+            # Only reset these if we want arm to lock again after completion
+            # environment._is_arm_moving = False
+            # environment._is_gripper_moving = False
+
+            # If we added a disable function, reset it
+            if hasattr(environment, 'disable_arm_rest'):
+                environment.disable_arm_rest(False)
+                print("Re-enabled arm rest enforcement")
+        except Exception as e:
+            print(f"Error resetting flags: {e}")
+
+        print("Enhanced camera-guided grasp completed")
+
         # Return success based on attachment
         return attach_success
-    
-    def get_joint_position(self, locobot, link_id):
-        """Get the current position of a joint."""
-        pos_offset = locobot.get_link_joint_pos_offset(link_id)
-        if pos_offset >= 0:
-            joint_pos = locobot.joint_positions
-            return joint_pos[pos_offset]
-        return 0.0

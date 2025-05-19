@@ -3,6 +3,7 @@ import os
 import time
 import json
 import uuid
+import traceback
 import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Any
@@ -83,21 +84,79 @@ if USE_ACTUAL_RAG:
         def get_clusters(self):
             return self.clusters
             
+
+
         def save(self, filepath):
-            data = {"nodes": {}, "clusters": self.clusters}
-            for node_id, node in self.nodes.items():
-                node_dict = {
-                    "node_id": node.node_id,
-                    "node_type": node.node_type,
-                    "description": node.description,
-                    "attributes": node.attributes,
-                    "children": node.children,
-                    "parent": node.parent
+            """Save forest to disk with comprehensive Vector3 handling."""
+            try:
+                # Create simpler data structure with just nodes
+                data = {"nodes": {}}
+
+                # Process each node carefully
+                for node_id, node in self.nodes.items():
+                    # Process attributes recursively
+                    processed_attributes = self._process_for_json(node.attributes) if node.attributes else {}
+
+                    # Create processed node entry
+                    node_dict = {
+                        "node_id": node.node_id,
+                        "node_type": node.node_type,
+                        "description": node.description,
+                        "attributes": processed_attributes,
+                        "children": node.children,
+                        "parent": node.parent
+                    }
+                    data["nodes"][node_id] = node_dict
+
+                # Save data with simple format
+                with open(filepath, 'w') as f:
+                    json.dump(data, f, indent=2)
+                    print(f"Successfully saved to {filepath}")
+
+            except Exception as e:
+                print(f"Error in save method: {e}")
+                traceback.print_exc()
+
+                # Save minimal backup
+                try:
+                    backup_data = {
+                        "error": str(e),
+                        "timestamp": time.time(),
+                        "backup": True
+                    }
+                    with open(filepath, 'w') as f:
+                        json.dump(backup_data, f)
+                        print(f"Saved minimal backup to {filepath}")
+                except Exception as e2:
+                    print(f"Backup save also failed: {e2}")
+
+        def _process_for_json(self, obj):
+            """Process any object to make it JSON serializable."""
+            # Handle None
+            if obj is None:
+                return None
+
+            # Handle Vector3
+            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Vector3':
+                return [float(obj[0]), float(obj[1]), float(obj[2])]
+
+            # Handle Quaternion
+            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Quaternion':
+                return {
+                    "scalar": float(obj.scalar),
+                    "vector": [float(obj.vector.x), float(obj.vector.y), float(obj.vector.z)]
                 }
-                data["nodes"][node_id] = node_dict
-            
-            with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
+
+            # Handle lists recursively
+            if isinstance(obj, list):
+                return [self._process_for_json(item) for item in obj]
+
+            # Handle dictionaries recursively
+            if isinstance(obj, dict):
+                return {k: self._process_for_json(v) for k, v in obj.items()}
+
+            # Return other types as is
+            return obj
                 
         def load(self, filepath):
             try:
@@ -119,9 +178,10 @@ if USE_ACTUAL_RAG:
             except Exception as e:
                 print(f"Error loading forest: {e}")
 
-class SemanticBookMemory:
-    def __init__(self, config):
-        self.config = config
+class SemanticMemory:
+    """Main semantic memory class for storing and retrieving book information."""
+    def __init__(self, config=None):
+        self.config = config or {}
         self.semantic_forest = SemanticForest()
         self.memories = {}
         self.recent_discoveries = []
@@ -129,26 +189,30 @@ class SemanticBookMemory:
         self.mission_start_time = time.time()
         self.retriever = None
         
-        # Initialize Ollama LLM interface
-        self.ollama_llm = OllamaLLM(model=config.get('ollama', {}).get('models', {}).get('llm', "qwen3:8b"))
+        # Initialize Ollama LLM interface with default model if config is None
+        if self.config:
+            model = self.config.get('ollama', {}).get('models', {}).get('llm', "qwen3:8b")
+        else:
+            model = "qwen3:8b"
+        self.ollama_llm = OllamaLLM(model=model)
         
         # Initialize spatial relationship extractor
         self.spatial_extractor = SpatialRelationshipExtractor(llm_interface=self.ollama_llm)
         
         # Initialize enhanced book matcher
-        self.book_matcher = BookMatcher(config)
+        self.book_matcher = BookMatcher(self.config)
         
         # Initialize spatial relationship tracker
-        self.spatial_tracker = SpatialRelationTracker(config)
+        self.spatial_tracker = SpatialRelationTracker(self.config)
         
         # Load configuration parameters
-        self.novelty_window = config.get('agent', {}).get('novelty_window', 30)
-        self.novelty_count_threshold = config.get('agent', {}).get('novelty_count_threshold', 3)
-        self.coverage_threshold = config.get('agent', {}).get('coverage_threshold', 0.9)
+        self.novelty_window = self.config.get('agent', {}).get('novelty_window', 30)
+        self.novelty_count_threshold = self.config.get('agent', {}).get('novelty_count_threshold', 3)
+        self.coverage_threshold = self.config.get('agent', {}).get('coverage_threshold', 0.9)
         
         # Enhanced matching parameters
-        self.matching_threshold = config.get('matching', {}).get('threshold', 0.7)
-        self.confidence_update_rate = config.get('matching', {}).get('confidence_update_rate', 0.8)
+        self.matching_threshold = self.config.get('matching', {}).get('threshold', 0.7)
+        self.confidence_update_rate = self.config.get('matching', {}).get('confidence_update_rate', 0.8)
         
         # Book observation statistics
         self.observation_stats = {
@@ -159,7 +223,7 @@ class SemanticBookMemory:
         }
         
         # Load existing memory if available
-        memory_path = config.get('paths', {}).get('memory_save', 'semantic_forest_save.json')
+        memory_path = self.config.get('paths', {}).get('memory_save', 'semantic_forest_save.json')
         self.load(memory_path)
         
         # Initialize retriever
@@ -176,7 +240,7 @@ class SemanticBookMemory:
             self.retriever = None
     
     def add_observation(self, book_data, camera_state):
-        """Add a book observation with enhanced semantic processing and tracking."""
+        """Add a book observation to semantic memory."""
         # Create a unique book ID with timestamp and UUID
         current_time = time.time()
         book_id = f"book_{int(current_time*1000)}_{str(uuid.uuid4())[:8]}"
@@ -358,7 +422,7 @@ class SemanticBookMemory:
             print(f"Novelty event recorded: {novelty_event}")
         
     def _find_similar_node(self, new_node):
-        """Find an existing node that likely represents the same book using greatly enhanced matching with ultra-strict spatial proximity checks."""
+        """Find an existing node that likely represents the same book."""
         # Get all book instance nodes from the forest
         all_book_nodes = [node for node in self.semantic_forest.get_all_nodes() 
                          if node.node_type == "book_instance"]
@@ -409,10 +473,8 @@ class SemanticBookMemory:
                 exact_matches.sort(key=lambda x: x[2], reverse=True)
                 best_match, distance, score = exact_matches[0]
                 
-                # Log exact match details
+                # Found exact position match
                 print(f"Using EXACT position match at {distance:.3f}m with score {score:.3f}")
-                print(f"  New: {new_node.description[:40]}...")
-                print(f"  Match: {best_match.description[:40]}...")
                 
                 # Update observation statistics
                 self.observation_stats['duplicate_matches'] += 1
@@ -434,8 +496,6 @@ class SemanticBookMemory:
                 if desc_similarity > 0.3:
                     print(f"Using STRICT position match at {distance:.3f}m with score {score:.3f}")
                     print(f"  Description similarity: {desc_similarity:.3f}")
-                    print(f"  New: {new_node.description[:40]}...")
-                    print(f"  Match: {best_match.description[:40]}...")
                     
                     # Update observation statistics
                     self.observation_stats['duplicate_matches'] += 1
@@ -443,13 +503,11 @@ class SemanticBookMemory:
                 else:
                     print(f"WARNING: Descriptions differ too much for books at {distance:.3f}m")
                     print(f"  Desc similarity: {desc_similarity:.3f}")
-                    print(f"  New: {new_node.description[:40]}...")
-                    print(f"  Existing: {best_match.description[:40]}...")
                     
                     # If confidence is high enough, trust position more than description
                     # (Most likely same book with incorrect description recognition)
                     if new_confidence > 0.7 or existing_confidence > 0.7:
-                        print(f"  Using match despite description mismatch due to high confidence")
+                        print(f"  Using match despite description mismatch")
                         self.observation_stats['duplicate_matches'] += 1
                         return best_match
             
@@ -466,14 +524,12 @@ class SemanticBookMemory:
                 
                 if is_match:
                     print(f"Confirmed POSSIBLE position match at {distance:.3f}m with combined score {match_score:.3f}")
-                    print(f"  New: {new_node.description[:40]}...")
-                    print(f"  Match: {best_match.description[:40]}...")
                     
                     # Update observation statistics
                     self.observation_stats['duplicate_matches'] += 1
                     return best_match
                 else:
-                    print(f"Rejected possible match at {distance:.3f}m with insufficient score {match_score:.3f}")
+                    print(f"Rejected possible match at {distance:.3f}m with score {match_score:.3f}")
         
         # If no position-based match, fall back to full semantic/visual matching with book matcher
         best_match, match_score = self.book_matcher.get_best_matching_node(
@@ -483,18 +539,15 @@ class SemanticBookMemory:
         )
         
         if best_match and match_score >= self.matching_threshold:
-            # Log match details
+            # Found matching book
             print(f"Found semantic-matching book with score {match_score:.2f}")
-            print(f"  New: {new_node.description[:40]}...")
-            print(f"  Match: {best_match.description[:40]}...")
             
-            # Show position comparison if available
+            # Calculate distance for logging
             if ('world_position' in new_node.attributes and 
                 'world_position' in best_match.attributes):
                 new_pos = new_node.attributes['world_position']
                 match_pos = best_match.attributes['world_position']
                 distance = np.linalg.norm(np.array(new_pos) - np.array(match_pos))
-                print(f"  Distance: {distance:.2f}m")
             
             # Update observation statistics
             self.observation_stats['duplicate_matches'] += 1
@@ -505,7 +558,7 @@ class SemanticBookMemory:
         
     
     def _update_node(self, node, book_data, camera_state):
-        """Update an existing node with new observation data using greatly enhanced tracking with superior position handling."""
+        """Update an existing node with new observation data."""
         current_time = time.time()
         
         # Create unique observation ID for this update
@@ -578,16 +631,16 @@ class SemanticBookMemory:
                         (new_pos[2] * weight_new) + (old_pos[2] * weight_old)
                     ]
                     node.attributes["world_position"] = avg_pos
-                    print(f"Position similar (diff: {pos_difference:.3f}m), using weighted average with new:{weight_new:.2f}/old:{weight_old:.2f}")
+                    print(f"Position similar (diff: {pos_difference:.3f}m), using weighted average")
                     
                 elif pos_difference < 0.5:  # Moderately different positions
                     # Check confidence to decide
                     if new_confidence > old_confidence * 1.2:  # New is significantly more confident
                         node.attributes["world_position"] = new_pos
-                        print(f"Using new position (diff: {pos_difference:.3f}m) due to higher confidence ({new_confidence:.2f} vs {old_confidence:.2f})")
+                        print(f"Using new position (diff: {pos_difference:.3f}m)")
                     elif old_confidence > new_confidence * 1.2:  # Old is significantly more confident
                         # Keep old position
-                        print(f"Keeping existing position (diff: {pos_difference:.3f}m) due to higher confidence ({old_confidence:.2f} vs {new_confidence:.2f})")
+                        print(f"Keeping existing position (diff: {pos_difference:.3f}m)")
                     else:
                         # Confidences similar - conservatively use 25/75 weighting favoring old for stability
                         avg_pos = [
@@ -596,16 +649,15 @@ class SemanticBookMemory:
                             (new_pos[2] * 0.25) + (old_pos[2] * 0.75)
                         ]
                         node.attributes["world_position"] = avg_pos
-                        print(f"Moderately different positions (diff: {pos_difference:.3f}m), using 25/75 weighted average")
+                        print(f"Moderately different positions (diff: {pos_difference:.3f}m)")
                 else:
-                    # Large position difference (>0.5m) - highly unusual for stationary books
-                    # Use strict confidence comparison
+                    # Large position difference (>0.5m)
                     if new_confidence > old_confidence * 1.5:  # New is MUCH more confident
                         node.attributes["world_position"] = new_pos
-                        print(f"WARNING: Large position difference ({pos_difference:.3f}m) but accepting new position due to much higher confidence")
+                        print(f"Accepting new position with large difference ({pos_difference:.3f}m)")
                     else:
-                        # Reject new position, too different without sufficient confidence
-                        print(f"WARNING: Rejecting new position with large difference ({pos_difference:.3f}m) due to insufficient confidence")
+                        # Reject new position, too different
+                        print(f"Rejecting new position with large difference ({pos_difference:.3f}m)")
             else:
                 # No existing position, use the new one
                 node.attributes["world_position"] = new_pos
@@ -670,7 +722,9 @@ class SemanticBookMemory:
         similar_nodes = self.retriever.retrieve(query, top_k=3)
         
         # Check spatial distance
-        position_threshold = self.config['semantic_forest']['clustering']['distance_threshold']
+        position_threshold = 0.5  # default threshold, 0.5 meters
+        if self.config and 'semantic_forest' in self.config and 'clustering' in self.config['semantic_forest']:
+            position_threshold = self.config['semantic_forest']['clustering'].get('distance_threshold', 0.5)
         new_pos = np.array(new_node.attributes["world_position"])
         
         for node in similar_nodes:
@@ -704,7 +758,7 @@ class SemanticBookMemory:
         return False
     
     def update_clusters(self):
-        """Periodically update book clusters based on spatial and semantic similarity."""
+        """Periodically update book clusters."""
         if not hasattr(self, 'last_cluster_update'):
             self.last_cluster_update = time.time()
             return
@@ -751,7 +805,9 @@ class SemanticBookMemory:
                     distance_matrix[i, j] = distance
 
             # Step 3: Apply hierarchical clustering
-            threshold = self.config['semantic_forest']['clustering']['distance_threshold']
+            threshold = 0.5  # default threshold, 0.5 meters
+            if self.config and 'semantic_forest' in self.config and 'clustering' in self.config['semantic_forest']:
+                threshold = self.config['semantic_forest']['clustering'].get('distance_threshold', 0.5)
             clusters = []
             used_indices = set()
 
@@ -771,7 +827,11 @@ class SemanticBookMemory:
                         cluster.append(j)
                         used_indices.add(j)
 
-                if len(cluster) >= self.config['semantic_forest']['clustering']['min_cluster_size']:
+                min_cluster_size = 2  # default minimum size for a cluster
+                if self.config and 'semantic_forest' in self.config and 'clustering' in self.config['semantic_forest']:
+                    min_cluster_size = self.config['semantic_forest']['clustering'].get('min_cluster_size', 2)
+                
+                if len(cluster) >= min_cluster_size:
                     clusters.append([book_nodes[idx].node_id for idx in cluster])
 
             # Step 4: Create cluster nodes
@@ -823,16 +883,91 @@ class SemanticBookMemory:
         except Exception as e:
             print(f"Error creating cluster node: {e}")
 
-    def save_memory(self):
-        """Save forest to disk"""
+
+
+    def save(self, filepath):
+        """Save memory data directly to file"""
         try:
-            filepath = self.config['paths']['memory_save']
-            self.semantic_forest.save(filepath)
-            print(f"Semantic forest saved to {filepath}")
+            # Create data structure directly from semantic forest nodes
+            data = {
+                "semantic_forest_nodes": {},
+                "metadata": {
+                    "timestamp": time.time(),
+                    "unique_books": self.observation_stats.get('unique_books', 0)
+                }
+            }
+
+            # Get nodes directly from semantic forest
+            all_nodes = self.semantic_forest.get_all_nodes()
+
+            # Process each node
+            for node in all_nodes:
+                node_data = {
+                    "node_id": node.node_id,
+                    "node_type": node.node_type,
+                    "description": node.description,
+                    "attributes": self._process_for_json(getattr(node, 'attributes', {})),
+                    "children": getattr(node, 'children', []),
+                    "parent": getattr(node, 'parent', None)
+                }
+                data["semantic_forest_nodes"][node.node_id] = node_data
+
+            # Save directly to file with json
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            print(f"Successfully saved semantic forest to {filepath}")
+
         except Exception as e:
-            print(f"Error saving semantic forest: {e}")
+            print(f"Error saving forest: {e}")
             import traceback
             traceback.print_exc()
+
+            # Try simple backup
+            try:
+                backup_data = {"backup": True, "timestamp": time.time()}
+                with open(filepath, 'w') as f:
+                    json.dump(backup_data, f)
+
+                print(f"Saved backup data to {filepath}")
+            except Exception as e2:
+                print(f"Even backup save failed: {e2}")
+
+    def _process_for_json(self, obj):
+        """Process any object to make it JSON serializable"""
+        # Handle None
+        if obj is None:
+            return None
+
+        # Handle Vector3
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Vector3':
+            return [float(obj[0]), float(obj[1]), float(obj[2])]
+
+        # Handle Quaternion 
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Quaternion':
+            return {
+                "scalar": float(obj.scalar),
+                "vector": [float(obj.vector.x), float(obj.vector.y), float(obj.vector.z)]
+            }
+
+        # Handle numpy arrays
+        if hasattr(obj, 'dtype') and hasattr(obj, 'tolist'):
+            return obj.tolist()
+
+        # Handle numpy scalars
+        if hasattr(obj, 'dtype') and hasattr(obj, 'item'):
+            return obj.item()
+
+        # Handle lists recursively
+        if isinstance(obj, list):
+            return [self._process_for_json(item) for item in obj]
+
+        # Handle dictionaries recursively  
+        if isinstance(obj, dict):
+            return {k: self._process_for_json(v) for k, v in obj.items()}
+
+        # Return other types as is
+        return obj
     
     def _generate_cluster_summary(self, nodes: List[ForestNode]) -> str:
         """Use LLM to generate summary of book cluster"""
@@ -947,17 +1082,7 @@ class SemanticBookMemory:
             return 0.0
     
     def _extract_spatial_context(self, position, source_id=None, book_description=None):
-        """
-        Extract comprehensive spatial relationships to nearby books using enhanced tracking.
-        
-        Args:
-            position: 3D position of the book
-            source_id: ID of the book (optional)
-            book_description: Description of the book (optional)
-            
-        Returns:
-            Dictionary with spatial context information
-        """
+        """Extract spatial relationships to nearby books."""
         if not position:
             return None
             
@@ -1072,11 +1197,7 @@ class SemanticBookMemory:
         return context
 
     def should_terminate_search(self) -> Tuple[bool, str]:
-        """
-        Enhanced decision logic for when to terminate a book search.
-        Uses multiple metrics with dynamic thresholds and exploration-exploitation balance.
-        Also considers if books have been picked up as a termination condition.
-        """
+        """Determine if book search should be terminated."""
         current_time = time.time()
         mission_duration = current_time - self.mission_start_time
         
@@ -1257,45 +1378,42 @@ class SemanticBookMemory:
         return book_nodes[:max_count]
     
     def record_pick_action(self, position=None):
-        """
-        Record that a book was picked from the given position with enhanced tracking.
-        
-        Args:
-            position: [x, y, z] position where the book was picked from
-        
-        Returns:
-            bool: True if a book was found and updated, False otherwise
-        """
+        """Record that a book was picked from the given position."""
         if position is None:
             return False
-            
+
         # Find books near this position
         nodes = self.semantic_forest.get_all_nodes()
         picked_book = None
         min_distance = float('inf')
-        
+
         # Enhanced search for the closest book to the pick position
         for node in nodes:
             if node.node_type != "book_instance":
                 continue
-                
+
             # Skip if already picked
             if node.attributes.get('status') == 'picked':
                 continue
-                
+
             # Skip if no position information
             if not node.attributes or "world_position" not in node.attributes:
                 continue
-                
+
             # Calculate distance
             book_pos = node.attributes['world_position']
+
+            # Convert Vector3 to list if needed
+            if hasattr(book_pos, '__class__') and book_pos.__class__.__name__ == 'Vector3':
+                book_pos = [book_pos[0], book_pos[1], book_pos[2]]
+
             try:
                 distance = np.linalg.norm(np.array(position) - np.array(book_pos))
-                
+
                 # Log all potential matches within 1m for debugging
                 if distance < 1.0:
                     print(f"Potential book match at {distance:.3f}m: {node.description[:30]}...")
-                
+
                 # If this is the closest book so far
                 if distance < min_distance and distance < 0.5:  # Within 50cm
                     min_distance = distance
@@ -1303,18 +1421,18 @@ class SemanticBookMemory:
             except Exception as e:
                 print(f"Error calculating distance: {e}")
                 continue
-        
+            
         # Update the book status if found
         if picked_book:
             # Mark the book as picked
             picked_book.attributes['status'] = 'picked'
             picked_book.attributes['pick_time'] = time.time()
             picked_book.attributes['pick_position'] = position
-            
+
             # Record the pick action in observation history
             if 'observation_history' not in picked_book.attributes:
                 picked_book.attributes['observation_history'] = []
-                
+
             picked_book.attributes['observation_history'].append({
                 'id': f"pick_{int(time.time()*1000)}",
                 'timestamp': time.time(),
@@ -1322,11 +1440,11 @@ class SemanticBookMemory:
                 'position': position,
                 'distance': float(min_distance)
             })
-            
+
             # Record pick in position history too
             if 'position_history' not in picked_book.attributes:
                 picked_book.attributes['position_history'] = []
-                
+
             picked_book.attributes['position_history'].append({
                 'position': position,
                 'timestamp': time.time(),
@@ -1334,12 +1452,12 @@ class SemanticBookMemory:
                 'confidence': 1.0,  # High confidence since this is a direct action
                 'distance_from_previous': float(min_distance)
             })
-            
+
             # Update the node in the forest
             self.semantic_forest.update_node(picked_book)
             print(f"Recorded pick action for book: {picked_book.description[:30]}... at distance {min_distance:.3f}m")
             return True
-            
+
         print("No matching book found to record pick action")
         return False
         
@@ -1443,13 +1561,70 @@ class SemanticBookMemory:
         print("No matching book found to record place action")
         return False
     
-    def save(self, filepath: str):
-        """Save forest to disk"""
+    def save(self, filepath):
+        """Save memory data directly to file."""
         try:
-            self.semantic_forest.save(filepath)
-            print(f"Semantic forest saved to {filepath}")
+            # Create data structure directly from semantic forest nodes
+            data = {
+                "semantic_forest_nodes": {},
+                "metadata": {
+                    "timestamp": time.time(),
+                    "unique_books": self.observation_stats.get('unique_books', 0)
+                }
+            }
+
+            # Get nodes directly from semantic forest
+            all_nodes = self.semantic_forest.get_all_nodes()
+
+            # Process each node
+            for node in all_nodes:
+                node_data = {
+                    "node_id": node.node_id,
+                    "node_type": node.node_type,
+                    "description": node.description,
+                    "attributes": self._process_for_json(getattr(node, 'attributes', {})),
+                    "children": getattr(node, 'children', []),
+                    "parent": getattr(node, 'parent', None)
+                }
+                data["semantic_forest_nodes"][node.node_id] = node_data
+
+            # Save directly to file with json
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            print(f"Successfully saved semantic forest to {filepath}")
+
         except Exception as e:
             print(f"Error saving forest: {e}")
+
+            # Try simple backup
+            try:
+                backup_data = {"backup": True, "timestamp": time.time()}
+                with open(filepath, 'w') as f:
+                    json.dump(backup_data, f)
+
+                print(f"Saved backup data to {filepath}")
+            except Exception as e2:
+                print(f"Even backup save failed: {e2}")
+
+
+    def _convert_for_serialization(self, obj):
+        """Recursively convert values for JSON serialization."""
+        # Handle Vector3 objects
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Vector3':
+            return [obj[0], obj[1], obj[2]]
+
+        # Handle lists that might contain Vector3 objects
+        elif isinstance(obj, list):
+            return [self._convert_for_serialization(item) for item in obj]
+
+        # Handle dictionaries that might contain Vector3 objects
+        elif isinstance(obj, dict):
+            return {k: self._convert_for_serialization(v) for k, v in obj.items()}
+
+        # Return other types as is
+        else:
+            return obj
     
     def load(self, filepath: str):
         """Load forest from disk"""
@@ -1460,13 +1635,7 @@ class SemanticBookMemory:
             print(f"Error loading forest: {e}")
     
     def update_robot_position(self, position):
-        """
-        Update the robot's position in the semantic forest.
-        This enables visualizing the robot's position relative to books.
-        
-        Args:
-            position: [x, y, z] position of the robot
-        """
+        """Update the robot's position in the semantic forest."""
         if position is None:
             return
             
@@ -1523,3 +1692,35 @@ class SemanticBookMemory:
         except Exception as e:
             # It's okay if this fails, just means the visualization tool isn't available
             pass
+
+class VectorJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles Vector3, numpy arrays, and other special types."""
+    def default(self, obj):
+        # Handle Vector3 objects from magnum
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Vector3':
+            return [float(obj[0]), float(obj[1]), float(obj[2])]
+        
+        # Handle magnum.Quaternion
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Quaternion':
+            return {
+                "scalar": float(obj.scalar),
+                "vector": [float(obj.vector.x), float(obj.vector.y), float(obj.vector.z)]
+            }
+            
+        # Handle numpy arrays
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+            
+        # Handle numpy numeric types
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, 
+                           np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+            
+        if isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+            
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        
+        # Let the base class handle it (or raise TypeError)
+        return super().default(obj)

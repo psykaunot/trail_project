@@ -27,7 +27,7 @@ class CameraStabilizer:
         motor_ids,
         dof_map,
         pan_target: float = 0.0,
-        tilt_target: float = -0.26,
+        tilt_target: float = 0.0,
         debug: bool = False,
     ):
         """
@@ -49,6 +49,8 @@ class CameraStabilizer:
         self.pan_target = pan_target
         self.tilt_target = tilt_target
         self.debug = debug
+
+        self.is_picking = False 
         
         # Dictionary to store reference transforms for camera links
         self.reference_transforms = {}

@@ -10,7 +10,6 @@ import numpy as np
 import magnum as mn
 import requests
 import traceback
-import queue
 from enum import Enum, auto 
 import yaml
 import re
@@ -20,7 +19,7 @@ from tools import get_tool_descriptions
 from memory.memory import BookExperienceMemory
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Embodied_RAG'))
-from memory.semantic_memory import SemanticBookMemory
+from memory.semantic_memory import SemanticMemory
 # Import stubs instead to avoid OpenAI dependency
 from embodied_rag_stubs import EmbodiedRetriever
 
@@ -116,42 +115,6 @@ class MissionStateMachine:
                         self.current_state = MissionState.SEARCH
                         self.pick_attempts = 0
 
-    def _update_mission_state(self):
-        """Update mission state using semantic memory insights."""
-        if self.state == MissionState.SEARCH:
-            # Check if we've found sufficient books
-            if hasattr(self.book_memory, 'get_memory_stats'):
-                memory_stats = self.book_memory.get_memory_stats()
-                
-                if memory_stats['total_unique_books'] >= 3:
-                    print(f"Found {memory_stats['total_unique_books']} books, transitioning to VALIDATE")
-                    self.state = MissionState.VALIDATE
-                    
-                    try:
-                        # Use Embodied RAG to determine most interesting book
-                        query = "Which is the most interesting book found so far?"
-                        results = self.embodied_rag.query(query, top_k=1)
-                        
-                        if isinstance(results, dict) and 'results' in results and results['results']:
-                            self.target_book = results['results'][0]
-                            print(f"Selected target book: {self.target_book.get('description', 'Unknown')}")
-                        else:
-                            print("Warning: No interesting books found by RAG query")
-                    except Exception as e:
-                        print(f"Error querying for interesting books: {e}")
-                        
-                        # Fallback: select the first book
-                        if hasattr(self.book_memory, 'semantic_forest'):
-                            book_nodes = [n for n in self.book_memory.semantic_forest.get_all_nodes() 
-                                          if n.node_type == 'book_instance']
-                            if book_nodes:
-                                node = book_nodes[0]
-                                self.target_book = {
-                                    "id": node.node_id,
-                                    "description": node.description,
-                                    "world_position": node.attributes.get("world_position")
-                                }
-                                print(f"Selected fallback target book: {self.target_book.get('description', 'Unknown')}")
                         
     def _attempt_pick(self):
         """Attempt to pick the target book."""
@@ -326,16 +289,7 @@ class Controller:
         }
     
     def start_camera_scan(self, pattern=None, granularity=None):
-        """
-        Start automated camera scanning with specified pattern.
-        
-        Args:
-            pattern: Name of predefined pattern or None for default
-            granularity: Level of detail (1-4) or None for default
-            
-        Returns:
-            bool: True if scanning started successfully
-        """
+        """Start automated camera scanning with specified pattern."""
         if not self.camera_controller:
             self.progress = "Failed - Camera controller not initialized"
             return False
@@ -571,15 +525,7 @@ class Controller:
             print(f"Error processing scan analysis: {e}")
     
     def execute_camera_command(self, command):
-        """
-        Execute a camera command from LLM reasoning process.
-        
-        Args:
-            command: Dictionary with command specification
-            
-        Returns:
-            dict: Result information
-        """
+        """Execute a camera command from LLM reasoning process."""
         if not self.camera_controller:
             print("Camera controller not initialized")
             return {"success": False, "error": "Camera controller not available"}
@@ -599,12 +545,7 @@ class Controller:
             return {"success": False, "error": str(e)}
     
     def investigate_object(self, object_name):
-        """
-        Focus camera on a specific object of interest.
-        
-        Args:
-            object_name: Name of object to investigate
-        """
+        """Focus camera on a specific object of interest."""
         # Find object in detected objects
         target_obj = None
         for obj in self.detected_objects:
@@ -882,10 +823,6 @@ class Controller:
 
 
 
-# Class already imported above
-import queue
-
-# In the AutonomousBookSearchAgent class, modify:
 
 class AutonomousBookSearchAgent:
     """Fully autonomous agent for book searching using camera control."""
@@ -926,10 +863,10 @@ class AutonomousBookSearchAgent:
         if semantic_memory:
             self.book_memory = semantic_memory
         else:
-            # Add memory system - adapt to use SemanticBookMemory if available
+            # Add memory system - adapt to use SemanticMemory if available
             try:
-                from memory.semantic_memory import SemanticBookMemory
-                self.book_memory = SemanticBookMemory(self.config)
+                from memory.semantic_memory import SemanticMemory
+                self.book_memory = SemanticMemory(self.config)
                 print("Using enhanced Semantic Forest memory system")
             except ImportError:
                 from memory.memory import BookExperienceMemory
@@ -947,7 +884,7 @@ class AutonomousBookSearchAgent:
             semantic_memory=self.book_memory
         )
         
-        # Make sure to connect the semantic memory
+        # Connect the semantic memory
         if hasattr(self.embodied_rag, 'semantic_memory') and not self.embodied_rag.semantic_memory:
             self.embodied_rag.semantic_memory = self.book_memory
         
@@ -1066,7 +1003,7 @@ class AutonomousBookSearchAgent:
             )
     
     def _check_for_books(self) -> list:
-        """Modified book checking with memory deduplication."""
+        """Check for books using memory deduplication."""
         # Send command to main thread
         self.command_queue.put({
             'tool': '_check_books',
@@ -1227,13 +1164,8 @@ class AutonomousBookSearchAgent:
         print(f"{'='*50}\n")
 
     def _get_llm_response(self, prompt: str) -> str:
-        """
-        Get response from LLM with better error handling and JSON cleanup.
-        This version includes all necessary variable definitions and improved response processing.
-        """
+        """Get response from LLM."""
         try:
-            print("DEBUG: Getting LLM response...")
-
             # Check if we have camera access for state information
             camera_state = None
             if hasattr(self, 'camera_controller') and self.camera_controller:
@@ -1245,20 +1177,14 @@ class AutonomousBookSearchAgent:
 
                 try:
                     camera_state = self.result_queue.get(timeout=2.0)
-                    print(f"DEBUG: Got camera state: {camera_state}")
                 except queue.Empty:
-                    print("DEBUG: Failed to get camera state, using defaults")
                     camera_state = {'pan': 0, 'tilt': 0}
             else:
                 # Default camera state if controller not available
                 camera_state = {'pan': 0, 'tilt': -0.26}
 
-            print("DEBUG: Formatting system prompt...")
-
             # Get tool descriptions
-            print("DEBUG: About to get tool descriptions...")
             tool_desc = get_tool_descriptions()
-            print("DEBUG: Got tool descriptions")
 
             # Format the system prompt with camera state and tool descriptions
             system_prompt = self.prompt_templates['system_prompt'].format(
@@ -1266,19 +1192,12 @@ class AutonomousBookSearchAgent:
                 current_pan=camera_state.get('pan', 0),
                 current_tilt=camera_state.get('tilt', -0.26)
             )
-            print("DEBUG: System prompt formatted")
-
-            print("DEBUG: Preparing messages...")
             # Build the message history for the LLM
             messages = [
                 {"role": "system", "content": system_prompt},
                 *self.conversation_history,  # Include previous conversation
                 {"role": "user", "content": prompt}
             ]
-            print("DEBUG: Messages prepared")
-
-            print("DEBUG: Preparing payload...")
-            # Here's where payload is defined!
             payload = {
                 "model": self.llm_model,
                 "messages": messages,
@@ -1286,14 +1205,9 @@ class AutonomousBookSearchAgent:
                 "temperature": 0.7,
                 "max_tokens": 2000  # Ensure we have enough space for response
             }
-            print("DEBUG: Payload prepared")
-
-            print("DEBUG: Sending LLM request...")
             # Make the actual API request with timeout
             try:
-                print("DEBUG: Sending request to Ollama at", self.api_url)
                 response = requests.post(self.api_url, json=payload, timeout=30.0)
-                print(f"DEBUG: Response received with status code {response.status_code}")
                 
                 # Check for HTTP errors
                 response.raise_for_status()
@@ -1342,7 +1256,7 @@ class AutonomousBookSearchAgent:
         
 
     def _clean_llm_response(self, response: str) -> str:
-        """Clean up LLM response for JSON parsing with non-recursive approach."""
+        """Clean up LLM response for JSON parsing."""
         if not response:
             return response
 
@@ -1378,7 +1292,7 @@ class AutonomousBookSearchAgent:
                                     # Check if it has expected fields
                                     if 'tool' in parsed or 'action' in parsed:
                                         return potential_json
-                                except:
+                                except Exception:
                                     pass
         except Exception as e:
             print(f"Error in JSON cleaning: {e}")
@@ -1386,16 +1300,10 @@ class AutonomousBookSearchAgent:
         return response
         
     def _parse_response(self, response: str) -> Tuple[Optional[str], Optional[Dict]]:
-        """
-        Parse thought and action from LLM response with extensive error handling.
-        This version handles various malformed JSON issues that commonly occur.
-        """
+        """Parse thought and action from LLM response."""
         thought = None
         action = None
 
-        # Debug print to see what we're parsing
-        if hasattr(self, 'debug') and self.debug:
-            print(f"DEBUG: Raw response to parse: {response[:200]}...")
 
         # First, let's try to clean the response
         response = response.strip()
@@ -1440,8 +1348,7 @@ class AutonomousBookSearchAgent:
                     action = json.loads(json_str)
                 except json.JSONDecodeError as e:
                     if self.debug:
-                        print(f"DEBUG: JSON parse error in strategy 1: {e}")
-                        print(f"DEBUG: Attempted to parse: {json_str}")
+                        print(f"JSON parse error: {e}")
 
         # Strategy 2: Find the first complete JSON object anywhere in the response
         if not action:
@@ -1523,13 +1430,11 @@ class AutonomousBookSearchAgent:
         # Debug output if we couldn't parse an action
         if not action and self.debug:
             print(f"WARNING: Could not parse action from response")
-            print(f"Extracted thought: {thought}")
-            print(f"Full response: {response[:500]}...")
 
         return thought, action
 
     def _should_complete_mission(self) -> bool:
-        """Modified mission completion with memory-based termination."""
+        """Check if mission should be completed."""
         # Original conditions
         if len(self.found_books) > 0 and len(self.scanned_positions) > 10:
             return True
@@ -1546,10 +1451,7 @@ class AutonomousBookSearchAgent:
         return False
     
     def get_scan_statistics(self):
-        """
-        Get current scanning statistics.
-        Returns a dictionary with scanning progress information.
-        """
+        """Get current scanning statistics."""
         if not hasattr(self, '_scan_stats'):
             self._scan_stats = {
                 'total_positions': len(self.scan_positions),
@@ -1557,7 +1459,7 @@ class AutonomousBookSearchAgent:
                 'successful_scans': 0,
                 'failed_attempts': 0
             }
-        return self._scan_stats.copy()# Add these methods to your AutonomousBookSearchAgent class
+        return self._scan_stats.copy()
 
     def _deduplicate_books(self, new_books):
         """Remove duplicate books based on spatial proximity."""
@@ -1588,15 +1490,18 @@ class AutonomousBookSearchAgent:
         return unique_books
 
     def _update_book_tracking(self, observation: str):
-        """Modified to use semantic forest"""
+        """Update book tracking and trigger picking."""
         match = re.search(r'Books found: (\d+)', observation)
         if match and int(match.group(1)) > 0:
             unique_new_books = self._check_for_books()
-
-            # No need to lock with the semantic forest
+    
             self.search_stats['total_detections'] += len(unique_new_books)
             self.search_stats['unique_books'] += len(unique_new_books)
-
+    
             if unique_new_books:
                 print(f"Found {len(unique_new_books)} new unique books!")
+                
+                # Trigger book picking when books are found
+                if hasattr(self, 'controller') and self.controller:
+                    self.controller._plan_book_actions(unique_new_books)
         

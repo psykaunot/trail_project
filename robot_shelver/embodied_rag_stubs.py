@@ -1,5 +1,7 @@
 import numpy as np
 import time
+import traceback
+import json
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
 
@@ -115,23 +117,79 @@ class SemanticForest:
         
     def get_clusters(self):
         return self.clusters
-        
+
+
     def save(self, filepath):
-        import json
-        data = {"nodes": {}, "clusters": self.clusters}
-        for node_id, node in self.nodes.items():
-            node_dict = {
-                "node_id": node.node_id,
-                "node_type": node.node_type,
-                "description": node.description,
-                "attributes": node.attributes,
-                "children": node.children,
-                "parent": node.parent
+        """Save forest to disk."""
+        try:
+            # Create simpler data structure with just nodes
+            data = {"nodes": {}}
+
+            # Process each node carefully
+            for node_id, node in self.nodes.items():
+                # Process attributes recursively
+                processed_attributes = self._process_for_json(node.attributes) if node.attributes else {}
+
+                # Create processed node entry
+                node_dict = {
+                    "node_id": node.node_id,
+                    "node_type": node.node_type,
+                    "description": node.description,
+                    "attributes": processed_attributes,
+                    "children": node.children,
+                    "parent": node.parent
+                }
+                data["nodes"][node_id] = node_dict
+
+            # Save data with simple format
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+                print(f"Successfully saved to {filepath}")
+
+        except Exception as e:
+            print(f"Error in save method: {e}")
+            traceback.print_exc()
+
+            # Save minimal backup
+            try:
+                backup_data = {
+                    "error": str(e),
+                    "timestamp": time.time(),
+                    "backup": True
+                }
+                with open(filepath, 'w') as f:
+                    json.dump(backup_data, f)
+                    print(f"Saved minimal backup to {filepath}")
+            except Exception as e2:
+                print(f"Backup save also failed: {e2}")
+
+    def _process_for_json(self, obj):
+        """Process any object to make it JSON serializable."""
+        # Handle None
+        if obj is None:
+            return None
+
+        # Handle Vector3
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Vector3':
+            return [float(obj[0]), float(obj[1]), float(obj[2])]
+
+        # Handle Quaternion
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Quaternion':
+            return {
+                "scalar": float(obj.scalar),
+                "vector": [float(obj.vector.x), float(obj.vector.y), float(obj.vector.z)]
             }
-            data["nodes"][node_id] = node_dict
-        
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+
+        # Handle lists recursively
+        if isinstance(obj, list):
+            return [self._process_for_json(item) for item in obj]
+
+        # Handle dictionaries recursively
+        if isinstance(obj, dict):
+            return {k: self._process_for_json(v) for k, v in obj.items()}
+
+        # Return other types as is
+        return obj
             
     def load(self, filepath):
         import json
@@ -201,11 +259,7 @@ class EmbodiedRAG:
     
     def __init__(self, llm_model=None, config=None, semantic_memory=None, working_dir=None, 
                  retrieval_method=None, airsim_utils=None):
-        """Initialize with available components.
-        
-        This constructor supports both the original EmbodiedRAG parameters
-        and our adapter parameters for compatibility, but uses Ollama exclusively.
-        """
+        """Initialize with available components."""
         self.config = config or {}
         self.working_dir = working_dir or "./embodied_nav_cache"
         self.retrieval_method = retrieval_method or RetrievalMethod.SEMANTIC
@@ -243,46 +297,43 @@ class EmbodiedRAG:
         # Initialize spatial relationship extractor
         self.spatial_extractor = SpatialRelationshipExtractor(llm_interface=self.llm)
         
-    # Override embedding function to use Ollama instead of OpenAI
+    # Embedding function implementation
     def embedding_func(self, texts):
-        """Generate embeddings using Ollama API instead of OpenAI.
-        Synchronous version for compatibility."""
+        """Generate embeddings using a deterministic approach."""
         import numpy as np
         
         # Generate embeddings for each text
         embeddings = []
         for text in texts:
             # Simple deterministic embedding based on text hashing
-            # This is a fallback when we don't have real embeddings
             text_bytes = text.encode('utf-8')
             hash_value = sum(text_bytes)
             
-            # Create a pseudo-random but deterministic vector based on the hash
+            # Create a deterministic vector based on the hash
             np.random.seed(hash_value)
-            embedding = np.random.rand(384)  # 384-dimensional embedding
-            embedding = embedding / np.linalg.norm(embedding)  # Normalize
+            embedding = np.random.rand(384) 
+            embedding = embedding / np.linalg.norm(embedding)
             embeddings.append(embedding)
             
         return embeddings
         
-    # Also provide async version for compatibility
+    # Async version of embedding function
     async def embedding_func_async(self, texts):
         """Async version of embedding function."""
         return self.embedding_func(texts)
         
-    # Add necessary stub methods for compatibility with original EmbodiedRAG
+    # Stub methods for compatibility
     async def load_graph_to_rag(self, graph_file):
         """Stub implementation for async loading of graph."""
-        print(f"Stub implementation - pretending to load graph: {graph_file}")
         return None
     
     async def query_async(self, query_text, query_type="explicit", start_position=None, use_topological=False):
-        """Async version of query for compatibility."""
+        """Async version of query."""
         result = self.query(query_text)
         return result, True
     
     def query(self, query_text, top_k=3, query_type=None):
-        """Query the semantic forest for information."""
+        """Query the semantic forest."""
         try:
             if not self.retriever and hasattr(self.semantic_memory, 'semantic_forest'):
                 self.retriever = EmbodiedRetriever(self.semantic_memory.semantic_forest)
@@ -323,7 +374,7 @@ class EmbodiedRAG:
             return {"error": str(e)}
             
     def analyze_spatial(self, position1, position2=None, node_id=None):
-        """Analyze spatial relationship between positions or nodes."""
+        """Analyze spatial relationship between positions."""
         try:
             if node_id and hasattr(self.semantic_memory, 'semantic_forest'):
                 # Get node from forest

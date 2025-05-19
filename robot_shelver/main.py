@@ -11,6 +11,7 @@ import queue
 import matplotlib.pyplot as plt
 from collections import deque
 import yaml
+import traceback
 
 from environment import setup_simulator, run_simulator_step, visualize_gripper_state
 from controller import Controller, ControlMode, AutonomousBookSearchAgent
@@ -19,9 +20,7 @@ from utils.object_spawner import ObjectSpawner
 from utils.video_recorder import VideoRecorder
 from tools import initialize_tools, TOOL_REGISTRY, get_tool_descriptions, query_semantic_forest, add_spatial_context, visualize_semantic_forest
 from manipulation.pick_place_demo import PickAndPlaceTask
-import traceback
-
-from memory.semantic_memory import SemanticBookMemory
+from memory.semantic_memory import SemanticMemory
 from perception.yolo_sam_perception import YoloSamPerception
 
 sys.path.append('Embodied_RAG')
@@ -47,33 +46,27 @@ def main():
     object_spawner = ObjectSpawner(sim)
     book_object = object_spawner.spawn_book()
     print(f"Book object spawned: {book_object is not None}")
-    # Initialize semantic memory
-    semantic_memory = SemanticBookMemory(config)
+    
+    semantic_memory = SemanticMemory(config)
     
     # Initialize perception system based on configuration
     perception_mode = config['perception']['mode']
     print(f"Initializing perception system in mode: {perception_mode}")
     
     if perception_mode == 'vlm':
-        # Use VLM-based perception
-        # Perception already imported at the top
         vlm_model = config['perception']['vlm']['model']
         perception = Perception(model_name=vlm_model)
         print(f"Using VLM perception with model: {vlm_model}")
     elif perception_mode == 'yolo_sam':
-        # Use YOLO-SAM based perception
         perception = YoloSamPerception(
             use_yolo_sam=True,
             confidence_threshold=config['perception']['yolo_sam']['confidence_threshold']
         )
         print("Using YOLO-SAM perception")
     else:
-        # Fallback to VLM perception
-        # Perception already imported at the top
         perception = Perception(model_name="qwen3:8b")
         print("Invalid perception mode, falling back to VLM perception")
     
-    # Set camera parameters for the selected perception system
     perception.set_camera_params(sim, "robot_rgb")
 
     initialize_tools(camera_controller, sim, perception)
@@ -102,15 +95,6 @@ def main():
         camera_controller.move_camera(0.0, -0.6, absolute=True)
         time.sleep(1.0)
 
-    #book_search_agent = AutonomousBookSearchAgent(
-    #    camera_controller=camera_controller,
-    #    perception=perception,
-    #    sim=sim,
-    #    llm_model="qwen3:8b",
-    #    prompts_file="prompt.yaml",
-    #    tool_descriptions=tool_descriptions
-    #)
-
     book_search_agent = AutonomousBookSearchAgent(
         camera_controller=camera_controller,
         perception=perception,
@@ -118,13 +102,16 @@ def main():
         llm_model=config['ollama']['models']['llm'],
         prompts_file="prompt.yaml",
         tool_descriptions=tool_descriptions,
-        semantic_memory=semantic_memory,  # Pass the semantic memory
+        semantic_memory=semantic_memory,
         config=config
     )
+   
+    # Add reference in both directions for bi-directional communication
+    controller.book_search_agent = book_search_agent
+    book_search_agent.controller = controller
 
-    # Make sure the forest references are properly initialized
+    # Initialize forest references
     if hasattr(book_search_agent, 'book_memory') and hasattr(book_search_agent.book_memory, 'semantic_forest'):
-        # Use safe attribute assignment
         if 'query_semantic_forest' in globals():
             query_semantic_forest.forest = book_search_agent.book_memory.semantic_forest
             print("Initialized query_semantic_forest tool with book memory")
@@ -132,7 +119,6 @@ def main():
         if 'add_spatial_context' in globals():
             add_spatial_context.forest = book_search_agent.book_memory.semantic_forest
             print("Initialized add_spatial_context tool with book memory")
-
 
     book_search_agent.found_books_lock = threading.Lock()
     video_recorder.start_recording()
@@ -157,19 +143,15 @@ def main():
                         
                         for idx, book in enumerate(books):
                             if "bbox" in book:
-                                # get_book_position now always returns a tuple of (position, object_reference)
                                 world_pos, book_obj = perception.get_book_position(book["bbox"])
                                 
                                 if world_pos is not None:
-                                    # Successfully got position
                                     book["world_position"] = [world_pos[0], world_pos[1], world_pos[2]]
                                     
                                     if book_obj is not None:
-                                        # Got object reference from perception
                                         book["object_ref"] = book_obj
                                         print(f"Book {idx} has position AND object reference from perception")
                                     elif book_object is not None:
-                                        # Use global book object as fallback
                                         book["object_ref"] = book_object
                                         print(f"Book {idx} has position but using global fallback object reference")
                                     else:
@@ -191,19 +173,15 @@ def main():
 
                         for book_idx, book in enumerate(books):
                             if "bbox" in book:
-                                # get_book_position now always returns a tuple of (position, object_reference)
                                 world_pos, book_obj = perception.get_book_position(book["bbox"])
                                 
                                 if world_pos is not None:
-                                    # Successfully got position
                                     book["world_position"] = [world_pos[0], world_pos[1], world_pos[2]]
                                     
                                     if book_obj is not None:
-                                        # Got object reference from perception
                                         book["object_ref"] = book_obj
                                         print(f"Book at scan {book_idx} has position AND object reference from perception")
                                     elif book_object is not None:
-                                        # Use global book object as fallback
                                         book["object_ref"] = book_object
                                         print(f"Book at scan {book_idx} has position but using global fallback object reference")
                                     else:
@@ -235,23 +213,20 @@ def main():
                         target_book_obj = command['params'].get('book_object')
                         book_id = command['params'].get('book_id')
                         
-                        # Enhanced logging
                         print(f"\n===== EXECUTING BOOK PICK =====")
                         print(f"Book ID: {book_id}")
                         print(f"Book Position: {book_pos}")
                         print(f"Has book object: {target_book_obj is not None}")
                         
                         # Check if the book is within reach
-                        in_reach = True  # Default to True
+                        in_reach = True
                         try:
-                            # Already imported at the top of the file, don't re-import
                             robot_pos = locobot.translation
                             book_position = np.array(book_pos)
                             robot_position = np.array([robot_pos[0], robot_pos[1], robot_pos[2]])
                             distance = np.linalg.norm(book_position - robot_position)
                             print(f"Distance to book: {distance:.3f}m")
                             
-                            # Check if too far
                             if distance > 1.5:  # 1.5 meters is roughly the maximum reach
                                 in_reach = False
                                 print(f"Book is too far to reach ({distance:.3f}m > 1.5m)")
@@ -262,7 +237,6 @@ def main():
                         
                         # Only proceed if book is in reach
                         if in_reach:
-                            # Log what we're using
                             if book_pos:
                                 print(f"Executing pick with position: {book_pos}")
                                 
@@ -277,7 +251,6 @@ def main():
                                 else:
                                     print("Warning: No book object available - searching for any book in simulator")
                                     
-                                    # Last resort - search for any book in simulator
                                     try:
                                         rigid_obj_mgr = sim.get_rigid_object_manager()
                                         for obj_handle in rigid_obj_mgr.get_object_handles():
@@ -293,7 +266,6 @@ def main():
                                     print(f"Using book object ID: {pick_book_obj.object_id}")
                                 
                                 try:
-                                    # PickAndPlaceTask already imported at the top
                                     task = PickAndPlaceTask(
                                         sim=sim, locobot=locobot,
                                         motor_ids=motor_ids, motor_settings=motor_settings,
@@ -301,9 +273,7 @@ def main():
                                         book_object=pick_book_obj
                                     )
                                     
-                                    # Execute picking with enhanced camera guidance
                                     print("Starting camera-guided book picking...")
-                                    # Actually execute the pick operation and get the result
                                     success = task.camera_guided_grasp()
                                     
                                     # Update memory if available
@@ -369,7 +339,6 @@ def main():
 
             # Camera command processing
             if camera_controller:
-                # Process book checking from camera
                 try:
                     cmd = camera_controller.command_queue.get_nowait()
                     if cmd['action'] == 'check_books_at_position':
@@ -396,19 +365,15 @@ def main():
                         # Add world positions to books
                         for book_idx, book in enumerate(books):
                             if "bbox" in book:
-                                # get_book_position now always returns a tuple of (position, object_reference)
                                 world_pos, book_obj = perception.get_book_position(book["bbox"])
                                 
                                 if world_pos is not None:
-                                    # Successfully got position
                                     book["world_position"] = [world_pos[0], world_pos[1], world_pos[2]]
                                     
                                     if book_obj is not None:
-                                        # Got object reference from perception
                                         book["object_ref"] = book_obj
                                         print(f"  Book {book_idx} position: {world_pos} WITH object reference from perception")
                                     elif book_object is not None:
-                                        # Use global book object as fallback
                                         book["object_ref"] = book_object
                                         print(f"  Book {book_idx} position: {world_pos} (using global fallback object reference)")
                                     else:
@@ -431,43 +396,35 @@ def main():
                                     if is_novel:
                                         print(f"New unique book {book_id} found!")
                                         
-                                        # Automatically attempt to pick the book if it has position and object reference
+                                        # Automatically attempt to pick the book if within reach
                                         if "world_position" in book:
-                                            # Check if the book is within reach before attempting pick
                                             try:
-                                                # numpy already imported at top of file, don't re-import
                                                 robot_pos = locobot.translation
                                                 book_position = np.array(book["world_position"])
                                                 robot_position = np.array([robot_pos[0], robot_pos[1], robot_pos[2]])
                                                 distance = np.linalg.norm(book_position - robot_position)
                                                 
-                                                # Print debug information
                                                 print(f"\n===== BOOK PROXIMITY CHECK =====")
                                                 print(f"Robot position: {robot_position}")
                                                 print(f"Book position: {book_position}")
                                                 print(f"Distance to book: {distance:.3f}m")
                                                 print(f"Book within reach: {distance <= 1.5}")
                                                 
-                                                # Only attempt to pick if the book is within reach
-                                                if distance <= 1.5:  # 1.5 meters is roughly the maximum reach
+                                                if distance <= 1.5:
                                                     print(f"Attempting to automatically pick book {book_id}")
                                                     
-                                                    # Create pick command
                                                     pick_params = {
                                                         'book_position': book["world_position"],
                                                         'book_id': book_id
                                                     }
                                                     
-                                                    # Add book object reference if available
                                                     if "object_ref" in book and book["object_ref"] is not None:
                                                         pick_params['book_object'] = book["object_ref"]
                                                         print(f"Using detected book object reference for picking")
                                                     else:
-                                                        # Fallback to global book object
                                                         pick_params['book_object'] = book_object
                                                         print(f"Using global book object for picking")
                                                     
-                                                    # Queue the pick command
                                                     book_search_agent.command_queue.put({
                                                         'tool': '_execute_pick',
                                                         'params': pick_params
@@ -507,8 +464,6 @@ def main():
             controller.update_robot_state(robot_position, robot_rotation)
 
             if hasattr(book_search_agent, 'book_memory') and hasattr(book_search_agent.book_memory, 'semantic_forest'):
-                # Update robot position in visualization tool
-                # visualize_semantic_forest already imported at the top
                 visualize_semantic_forest.robot_position = locobot.translation
 
             if camera_controller:
@@ -578,7 +533,6 @@ def main():
 
         except Exception as e:
             print(f"Error in main loop: {e}")
-            import traceback
             traceback.print_exc()
             break
 
@@ -599,13 +553,11 @@ def main():
 
     if hasattr(book_search_agent, 'book_memory'):
         try:
-            # Make sure we have a valid memory save path
             memory_save_path = config.get('paths', {}).get('memory_save', 'semantic_forest_save.json')
             book_search_agent.book_memory.save(memory_save_path)
             print(f"Semantic forest saved to {memory_save_path}")
         except Exception as e:
             print(f"Error saving semantic forest: {e}")
-            # Fallback to default path
             book_search_agent.book_memory.save("semantic_forest_save.json")
             print("Semantic forest saved to default path: semantic_forest_save.json")
 

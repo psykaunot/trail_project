@@ -95,50 +95,44 @@ def create_3d_visualization(G, title="Semantic Forest Visualization"):
     # Extract positions
     positions = {}
     labels = {}
-    colors = []
     node_types = {}
-    sizes = []
-    markers = []
-    observation_counts = {}  # Track observation counts for sizing
-    position_history_counts = {}  # Track position history for highlighting potential duplicates
-    node_status = {}  # Track picked/placed status
+    observation_counts = {}
+    position_history_counts = {}
+    node_status = {}
     
-    # First, find the robot node
-    robot_node = None
+    # Find robot position
     robot_position = None
-    
     for node_id, node_data in G.nodes(data=True):
-        node_type = node_data.get('node_type', 'unknown')
-        if node_type == 'robot':
-            robot_node = node_data
-            if 'attributes' in node_data and 'world_position' in node_data['attributes']:
-                robot_position = node_data['attributes']['world_position']
-                print(f"Found robot position: {robot_position}")
-                break
+        if node_data.get('node_type') == 'robot' and 'attributes' in node_data and 'world_position' in node_data['attributes']:
+            robot_position = node_data['attributes']['world_position']
+            print(f"Found robot position: {robot_position}")
+            break
     
-    # If we didn't find a robot node in the graph, check if there's a position manually saved
+    # Use default position if not found
     if robot_position is None:
-        try:
-            from tools import visualize_semantic_forest
-            if hasattr(visualize_semantic_forest, 'robot_position'):
-                robot_position = visualize_semantic_forest.robot_position
-                print(f"Using robot position from tools module: {robot_position}")
-        except Exception as e:
-            print(f"Could not get robot position from tools: {e}")
+        robot_position = [-10.0, 0.0, -2.0]
+        print(f"Using default robot position: {robot_position}")
     
-    # Process all nodes with enhanced attributes for visualization
+    # Process all nodes for visualization
     for node_id, node_data in G.nodes(data=True):
         pos = None
         if 'attributes' in node_data and 'world_position' in node_data['attributes']:
-            pos = node_data['attributes']['world_position']
-        else:
-            # Assign random position if no position is available
+            try:
+                pos_data = node_data['attributes']['world_position']
+                if isinstance(pos_data, (list, tuple)) and len(pos_data) >= 3:
+                    # Swap y and z to represent y as height
+                    pos = [float(pos_data[0]), float(pos_data[2]), float(pos_data[1])]
+            except Exception as e:
+                print(f"Error processing position for node {node_id}: {e}")
+                pos = None
+                
+        # Use random position as fallback
+        if pos is None:
             pos = [np.random.uniform(-10, 10), np.random.uniform(-10, 10), np.random.uniform(-10, 10)]
             
         positions[node_id] = pos
         labels[node_id] = node_data.get('description', node_id)[:20]
-        node_type = node_data.get('node_type', 'unknown')
-        node_types[node_id] = node_type
+        node_types[node_id] = node_data.get('node_type', 'unknown')
         
         # Get observation count for size scaling
         obs_count = 1
@@ -149,57 +143,61 @@ def create_3d_visualization(G, title="Semantic Forest Visualization"):
             elif 'observation_history' in attrs:
                 obs_count = len(attrs['observation_history'])
             
-            # Track position history count
             if 'position_history' in attrs:
                 position_history_counts[node_id] = len(attrs['position_history'])
             
-            # Track book status (picked/placed)
             if 'status' in attrs:
                 node_status[node_id] = attrs['status']
         
-        # Store observation count
         observation_counts[node_id] = obs_count
-        
-        # Determine color, size and marker based on node type and attributes
-        if node_type == 'book_instance':
-            # Size based on observation count (more observations = larger marker)
-            node_size = 80 + (obs_count * 20)  # Base size + scaling
-            
-            # Color based on status
-            if node_id in node_status:
-                if node_status[node_id] == 'picked':
-                    colors.append('purple')  # Purple for picked books
-                elif node_status[node_id] == 'placed':
-                    colors.append('blue')  # Blue for placed books
-                else:
-                    colors.append('green')  # Green for regular books
-            else:
-                colors.append('green')  # Default green for regular books
-                
-            sizes.append(node_size)
-            markers.append('o')  # Circle marker for books
-        elif node_type == 'cluster':
-            colors.append('orange')
-            sizes.append(150)
-            markers.append('s')  # Square marker for clusters
-        elif node_type == 'robot':
-            colors.append('red')
-            sizes.append(300)
-            markers.append('^')  # Triangle marker for robot
-        else:
-            colors.append('blue')
-            sizes.append(80)
-            markers.append('o')
     
-    # Add robot position if we have one but it's not in the graph
-    if robot_position is not None and not any(node_types.get(node_id) == 'robot' for node_id in G.nodes()):
+    # Add robot position if not already in the graph
+    if not any(node_types.get(node_id) == 'robot' for node_id in G.nodes()):
         robot_id = "robot_position"
         positions[robot_id] = robot_position
         labels[robot_id] = "ROBOT"
-        colors.append('red')
-        sizes.append(300)
-        markers.append('^')
+        node_types[robot_id] = "robot"
+        observation_counts[robot_id] = 1
         print(f"Added robot position manually: {robot_position}")
+    
+    # Helper function to safely extract valid positions
+    def get_valid_positions(node_list):
+        valid_nodes = []
+        valid_xs = []
+        valid_ys = []
+        valid_zs = []
+        valid_sizes = []
+        
+        for node_id in node_list:
+            if node_id in positions:
+                pos = positions[node_id]
+                if isinstance(pos, (list, tuple)) and len(pos) >= 3:
+                    try:
+                        x, y, z = float(pos[0]), float(pos[1]), float(pos[2])
+                        valid_nodes.append(node_id)
+                        valid_xs.append(x)
+                        valid_ys.append(y)
+                        valid_zs.append(z)
+                        valid_sizes.append(observation_counts.get(node_id, 1) * 20 + 80)
+                    except (TypeError, ValueError):
+                        pass
+        
+        return valid_nodes, valid_xs, valid_ys, valid_zs, valid_sizes
+    
+    # Process node types
+    book_nodes = [node_id for node_id, t in node_types.items() if t == 'book_instance']
+    robot_nodes = [node_id for node_id, t in node_types.items() if t == 'robot']
+    
+    # Plot robot nodes - these were causing the broadcasting error
+    if robot_nodes:
+        valid_nodes, xs, ys, zs, ss = get_valid_positions(robot_nodes)
+        if xs and ys and zs:  # Check for non-empty arrays
+            ax.scatter(xs, ys, zs, c='red', s=300, alpha=1.0, label='Robot', marker='^')
+            
+            # Add vertical line from robot to ground
+            for x, y, z in zip(xs, ys, zs):
+                ax.plot([x, x], [y, y], [z, 0], 'r--', linewidth=2)
+                ax.text(x, y, z + 0.3, "ROBOT", color='red', fontweight='bold', fontsize=14)
     
     # Extract node positions into separate lists for each type
     # First, handle books by their status (regular, picked, placed)
@@ -226,18 +224,21 @@ def create_3d_visualization(G, title="Semantic Forest Visualization"):
             xs = [positions[node_id][0] for node_id in valid_books]
             ys = [positions[node_id][1] for node_id in valid_books]
             zs = [positions[node_id][2] for node_id in valid_books]
-            ss = [observation_counts.get(node_id, 1) * 20 + 80 for node_id in valid_books]  # Size based on observations
             
-            # Default green for regular books
-            ax.scatter(xs, ys, zs, c='green', s=ss, alpha=0.7, label='Books', marker='o')
-            
-            # Draw position history rings for books with multiple positions
-            for i, node_id in enumerate(valid_books):
-                if node_id in position_history_counts and position_history_counts[node_id] > 1:
-                    # Draw a highlight ring around books with position history
-                    x, y, z = positions[node_id]
-                    ax.scatter([x], [y], [z], c='none', s=ss[i]*1.5, 
-                               alpha=0.7, edgecolors='yellow', linewidths=2, marker='o')
+            # Fix: Check for non-empty arrays before plotting
+            if not xs or not ys or not zs:
+                print("Skipping empty book plotting")
+            else:
+                ss = [observation_counts.get(node_id, 1) * 20 + 80 for node_id in valid_books]
+                ax.scatter(xs, ys, zs, c='green', s=ss, alpha=0.7, label='Books', marker='o')
+                
+                # Draw position history rings for books with multiple positions
+                for i, node_id in enumerate(valid_books):
+                    if node_id in position_history_counts and position_history_counts[node_id] > 1:
+                        # Draw a highlight ring around books with position history
+                        x, y, z = positions[node_id]
+                        ax.scatter([x], [y], [z], c='none', s=ss[i]*1.5, 
+                                   alpha=0.7, edgecolors='yellow', linewidths=2, marker='o')
     
     # Plot picked books
     if picked_books:
@@ -273,6 +274,11 @@ def create_3d_visualization(G, title="Semantic Forest Visualization"):
             ys = [positions[node_id][1] for node_id in nodes_of_type if node_id in positions]
             zs = [positions[node_id][2] for node_id in nodes_of_type if node_id in positions]
             
+            # Fix: Check for non-empty arrays before plotting
+            if not xs or not ys or not zs:
+                print(f"Skipping empty {node_type} node plotting")
+                continue
+                
             if node_type == 'cluster':
                 ax.scatter(xs, ys, zs, c='orange', s=150, alpha=0.7, label='Clusters', marker='s')
             elif node_type == 'robot':
@@ -292,36 +298,34 @@ def create_3d_visualization(G, title="Semantic Forest Visualization"):
         if node_types.get(node_id) != 'robot' and node_id != 'robot_position':
             ax.text(pos[0], pos[1], pos[2], labels[node_id], fontsize=8)
     
-    # Plot edges
+    # Plot edges with safety checks
     for source, target, edge_data in G.edges(data=True):
-        if source in positions and target in positions:
-            relation_type = edge_data.get('type', 'unknown')
+        if (source in positions and target in positions and
+            isinstance(positions[source], (list, tuple)) and len(positions[source]) >= 3 and
+            isinstance(positions[target], (list, tuple)) and len(positions[target]) >= 3):
             
-            # Determine edge color based on relation type
-            if relation_type == 'parent-child':
-                color = 'blue'
-                linewidth = 2
-            elif relation_type in ['above', 'below', 'left', 'right', 'near']:
-                color = 'red'
-                linewidth = 1
-            else:
-                color = 'gray'
-                linewidth = 1
-            
-            ax.plot(
-                [positions[source][0], positions[target][0]],
-                [positions[source][1], positions[target][1]],
-                [positions[source][2], positions[target][2]],
-                color=color, linewidth=linewidth, alpha=0.5
-            )
+            try:
+                source_pos = [float(positions[source][0]), float(positions[source][1]), float(positions[source][2])]
+                target_pos = [float(positions[target][0]), float(positions[target][1]), float(positions[target][2])]
+                
+                relation_type = edge_data.get('type', 'unknown')
+                
+                color = 'blue' if relation_type == 'parent-child' else 'red' if relation_type in ['above', 'below', 'left', 'right', 'near'] else 'gray'
+                linewidth = 2 if relation_type == 'parent-child' else 1
+                
+                ax.plot(
+                    [source_pos[0], target_pos[0]],
+                    [source_pos[1], target_pos[1]],
+                    [source_pos[2], target_pos[2]],
+                    color=color, linewidth=linewidth, alpha=0.5
+                )
+            except (ValueError, TypeError):
+                pass
     
-    # Set labels and title
     ax.set_xlabel('X Position')
     ax.set_ylabel('Y Position')
     ax.set_zlabel('Z Position')
     ax.set_title(title)
-    
-    # Improve layout
     plt.tight_layout()
     return fig
 
@@ -329,8 +333,14 @@ def convert_forest_to_networkx(forest_data):
     """Converts the semantic forest data to a NetworkX graph."""
     G = nx.DiGraph()
     
+    # Check if we have semantic_forest_nodes instead of nodes
+    if 'semantic_forest_nodes' in forest_data:
+        nodes_data = forest_data['semantic_forest_nodes']
+    else:
+        nodes_data = forest_data.get('nodes', {})
+    
     # Add nodes
-    for node_id, node_data in forest_data.get('nodes', {}).items():
+    for node_id, node_data in nodes_data.items():
         G.add_node(node_id, **node_data)
     
     # Add clusters if they exist
@@ -338,33 +348,40 @@ def convert_forest_to_networkx(forest_data):
         G.add_node(cluster_id, **cluster_data)
     
     # Add parent-child relationships
-    for node_id, node_data in forest_data.get('nodes', {}).items():
+    for node_id, node_data in nodes_data.items():
         # Add edges to children
         if 'children' in node_data:
             for child_id in node_data['children']:
-                G.add_edge(node_id, child_id, type='parent-child')
+                if child_id and child_id in nodes_data:  # Only add if the child exists
+                    G.add_edge(node_id, child_id, type='parent-child')
         
         # Add edge to parent
         if 'parent' in node_data and node_data['parent']:
-            G.add_edge(node_data['parent'], node_id, type='parent-child')
+            if node_data['parent'] in nodes_data:  # Only add if the parent exists
+                G.add_edge(node_data['parent'], node_id, type='parent-child')
     
     # Add spatial relationships if available
-    for node_id, node_data in forest_data.get('nodes', {}).items():
+    for node_id, node_data in nodes_data.items():
         if 'attributes' in node_data and 'spatial_relations' in node_data['attributes']:
             for relation in node_data['attributes']['spatial_relations']:
                 if 'related_to' in relation and 'relation_type' in relation:
-                    G.add_edge(
-                        node_id, 
-                        relation['related_to'], 
-                        type=relation['relation_type'],
-                        confidence=relation.get('confidence', 1.0)
-                    )
+                    related_to = relation['related_to']
+                    if related_to in nodes_data:  # Only add if the related node exists
+                        G.add_edge(
+                            node_id, 
+                            related_to, 
+                            type=relation['relation_type'],
+                            confidence=relation.get('confidence', 1.0)
+                        )
     
     return G
 
 def display_forest_details(forest_data):
     """Displays detailed information about the forest in text format with enhanced duplicate detection."""
-    nodes = forest_data.get('nodes', {})
+    if 'semantic_forest_nodes' in forest_data:
+        nodes = forest_data['semantic_forest_nodes']
+    else:
+        nodes = forest_data.get('nodes', {})
     clusters = forest_data.get('clusters', {})
     
     print("=" * 60)
@@ -574,71 +591,241 @@ def main():
         print(f"Error: Failed to open {forest_path}: {e}")
         return
     
-    # Display text summary
-    display_forest_details(forest_data)
+    # Check the structure of the forest data
+    if 'semantic_forest_nodes' in forest_data:
+        num_nodes = len(forest_data['semantic_forest_nodes'])
+        print(f"Found {num_nodes} nodes in semantic_forest_nodes")
+        
+        # Print out the book node IDs
+        book_nodes = [n_id for n_id, n_data in forest_data['semantic_forest_nodes'].items() 
+                     if n_data.get('node_type') == 'book_instance']
+        print(f"Book nodes: {book_nodes}")
+        
+        # Print out one book node for debugging
+        if book_nodes:
+            sample_node = forest_data['semantic_forest_nodes'][book_nodes[0]]
+            print(f"Sample book node: {sample_node.get('description')}")
+            print(f"Node attributes: world_position={sample_node.get('attributes', {}).get('world_position')}")
+            
+    elif 'nodes' in forest_data:
+        num_nodes = len(forest_data['nodes'])
+        print(f"Found {num_nodes} nodes in nodes")
+    else:
+        print("Warning: No nodes found in the forest data")
     
-    # Convert to NetworkX graph
-    G = convert_forest_to_networkx(forest_data)
+    # Create a simple text summary instead of the full visualization
+    print("\n============================================================")
+    print("SEMANTIC FOREST SUMMARY")
+    print("============================================================")
     
-    # Create visualizations
+    # Get node data from the appropriate field
+    if 'semantic_forest_nodes' in forest_data:
+        nodes = forest_data['semantic_forest_nodes']
+    else:
+        nodes = forest_data.get('nodes', {})
+    
+    # Count different node types
+    book_instances = [n for n_id, n in nodes.items() if n.get('node_type') == 'book_instance']
+    robot_nodes = [n for n_id, n in nodes.items() if n.get('node_type') == 'robot']
+    cluster_nodes = [n for n_id, n in nodes.items() if n.get('node_type') == 'cluster']
+    
+    print(f"Total nodes: {len(nodes)}")
+    print(f"Total clusters: {len(cluster_nodes)}")
+    print(f"Books: {len(book_instances)}")
+    print(f"Robot nodes: {len(robot_nodes)}")
+    
+    # Count books with multiple observations
+    books_with_history = 0
+    picked_books = 0
+    placed_books = 0
+    
+    for book in book_instances:
+        if 'attributes' in book:
+            attrs = book['attributes']
+            if 'position_history' in attrs and len(attrs['position_history']) > 1:
+                books_with_history += 1
+            if 'status' in attrs:
+                if attrs['status'] == 'picked':
+                    picked_books += 1
+                elif attrs['status'] == 'placed':
+                    placed_books += 1
+    
+    print(f"Books with position history: {books_with_history}")
+    print(f"Picked books: {picked_books}")
+    print(f"Placed books: {placed_books}")
+    
+    # Print book details
+    print(f"\n{len(book_instances)} BOOK INSTANCES:")
+    print("------------------------------------------------------------")
+    
+    for i, book in enumerate(book_instances):
+        description = book.get('description', 'No description')
+        position = "Unknown"
+        status = book.get('attributes', {}).get('status', 'Unknown')
+        
+        if 'attributes' in book and 'world_position' in book['attributes']:
+            wp = book['attributes']['world_position']
+            # Swap y and z to represent y as height
+            position = f"({wp[0]:.2f}, {wp[2]:.2f}, {wp[1]:.2f})"
+        
+        print(f"{i+1}. {description}")
+        print(f"   Position: {position}")
+        print(f"   Status: {status}")
+        print("------------------------------------------------------------")
+    
+    print("============================================================")
+    
+    # Create a proper 3D visualization
+    plots_dir = Path("./plots")
+    plots_dir.mkdir(exist_ok=True)
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Extract positions from nodes
+    book_positions = []
+    robot_position = None
+    
+    for node_id, node_data in nodes.items():
+        if node_data.get('node_type') == 'robot' and 'attributes' in node_data and 'world_position' in node_data['attributes']:
+            robot_position = node_data['attributes']['world_position']
+        
+        elif node_data.get('node_type') == 'book_instance' and 'attributes' in node_data and 'world_position' in node_data['attributes']:
+            pos = node_data['attributes']['world_position']
+            status = node_data['attributes'].get('status', '')
+            book_positions.append({
+                'position': pos, 
+                'description': node_data.get('description', 'Unknown Book'),
+                'status': status
+            })
+    
+    # Plot robot position
+    if robot_position:
+        # Swap y and z for visualization
+        x, y, z = robot_position[0], robot_position[2], robot_position[1]
+        ax.scatter([x], [y], [z], color='red', s=200, marker='^', label='Robot')
+        ax.text(x, y, z + 0.2, "ROBOT", color='red', fontsize=12)
+        
+        # Add line to floor
+        ax.plot([x, x], [y, y], [z, 0], 'r--', alpha=0.7)
+    
+    # Plot book positions
+    for i, book in enumerate(book_positions):
+        pos = book['position']
+        # Swap y and z for visualization
+        x, y, z = pos[0], pos[2], pos[1]
+        
+        color = 'green'
+        if book['status'] == 'picked':
+            color = 'purple'
+        elif book['status'] == 'placed':
+            color = 'blue'
+            
+        ax.scatter([x], [y], [z], color=color, s=150, alpha=0.8)
+        ax.text(x, y, z + 0.1, f"Book {i+1}", fontsize=10)
+    
+    # Set labels and title
+    ax.set_xlabel('X')
+    ax.set_ylabel('Z')
+    ax.set_zlabel('Y (Height)')
+    ax.set_title('Semantic Forest 3D Visualization')
+    
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='^', color='red', label='Robot',
+               markerfacecolor='red', markersize=10, linestyle='None'),
+        Line2D([0], [0], marker='o', color='green', label='Book',
+               markerfacecolor='green', markersize=10, linestyle='None'),
+        Line2D([0], [0], marker='o', color='purple', label='Picked Book',
+               markerfacecolor='purple', markersize=10, linestyle='None'),
+        Line2D([0], [0], marker='o', color='blue', label='Placed Book',
+               markerfacecolor='blue', markersize=10, linestyle='None')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+    
+    # Set equal aspect ratio
+    ax.set_box_aspect([1, 1, 0.5])
+    
+    # Add a floor grid
+    x_min, x_max = -12, -8
+    z_min, z_max = -4, 0
+    xx, zz = np.meshgrid(np.linspace(x_min, x_max, 5), np.linspace(z_min, z_max, 5))
+    yy = np.zeros_like(xx)
+    ax.plot_surface(xx, zz, yy, alpha=0.2, color='gray')
+    
+    plt.tight_layout()
+    plt.savefig(plots_dir / "semantic_forest_3d.png")
+    print(f"3D visualization saved to: {plots_dir}/semantic_forest_3d.png")
+    
+    # Show the plot window interactively
+    plt.show()
+    
+    # Create minimal HTML
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Semantic Forest Summary</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            h1 {{ color: #333; }}
+            .stats {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; }}
+            .book {{ margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
+            .picked {{ background-color: #e8f5e9; }}
+            .placed {{ background-color: #e3f2fd; }}
+        </style>
+    </head>
+    <body>
+        <h1>Semantic Forest Visualization</h1>
+        
+        <div class="stats">
+            <h2>Forest Statistics</h2>
+            <p>Total nodes: {len(nodes)}</p>
+            <p>Book instances: {len(book_instances)}</p>
+            <p>Picked books: {picked_books}</p>
+            <p>Placed books: {placed_books}</p>
+        </div>
+        
+        <h2>Book Instances</h2>
+    """
+    
+    # Add book details
+    for i, book in enumerate(book_instances):
+        description = book.get('description', 'No description')
+        status = book.get('attributes', {}).get('status', '')
+        status_class = status if status in ['picked', 'placed'] else ''
+        
+        position = "Unknown"
+        if 'attributes' in book and 'world_position' in book['attributes']:
+            wp = book['attributes']['world_position']
+            # Swap y and z to represent y as height
+            position = f"({wp[0]:.2f}, {wp[2]:.2f}, {wp[1]:.2f})"
+        
+        html_content += f"""
+        <div class="book {status_class}">
+            <h3>Book {i+1}: {description}</h3>
+            <p>Position: {position}</p>
+            <p>Status: {status}</p>
+        </div>
+        """
+    
+    html_content += """
+    </body>
+    </html>
+    """
+    
+    # Write the HTML file
+    html_path = plots_dir / "semantic_forest_visualization.html"
+    with open(html_path, 'w') as f:
+        f.write(html_content)
+    
+    print(f"Interactive visualization saved to: {html_path}")
+    print("Opening in browser...")
     try:
-        # Create interactive HTML visualization
-        plots_dir = Path("./plots")
-        plots_dir.mkdir(exist_ok=True)
-        
-        html_path = plots_dir / "semantic_forest_visualization.html"
-        if create_interactive_html(G, str(html_path)):
-            print(f"\nInteractive visualization saved to: {html_path}")
-            print("Opening in browser...")
-            webbrowser.open(f"file://{html_path.absolute()}")
-        
-        # Create 3D matplotlib visualization with validation
-        try:
-            fig = create_3d_visualization(G)
-            
-            # Check if figure has actual data points to display
-            has_data = False
-            for ax in fig.axes:
-                if hasattr(ax, 'collections') and len(ax.collections) > 0:
-                    has_data = True
-                    break
-            
-            if has_data:
-                plt_path = plots_dir / "semantic_forest_3d.png"
-                fig.savefig(plt_path)
-                print(f"3D visualization saved to: {plt_path}")
-                
-                # Show the matplotlib visualization
-                plt.show()
-            else:
-                print("WARNING: No data points to visualize in 3D plot. Skipping figure save.")
-                # Create a simple placeholder figure
-                plt.figure()
-                plt.title("No book data to visualize")
-                plt.text(0.5, 0.5, "No book position data available", 
-                         ha='center', va='center')
-                plt.savefig(plots_dir / "semantic_forest_3d_placeholder.png")
-                print("Created placeholder visualization instead.")
-        except ValueError as ve:
-            print(f"Data validation error in visualization: {ve}")
-            print("This error typically occurs when trying to visualize empty datasets.")
-            print("Creating a placeholder image instead.")
-            
-            # Create a simple placeholder figure
-            plt.figure()
-            plt.title("Visualization Error")
-            plt.text(0.5, 0.5, "Error creating 3D visualization", 
-                     ha='center', va='center')
-            plt.savefig(plots_dir / "semantic_forest_3d_error.png")
-        except Exception as e:
-            print(f"Unexpected error in 3D visualization: {e}")
-            import traceback
-            traceback.print_exc()
-        
+        webbrowser.open(f"file://{html_path.absolute()}")
     except Exception as e:
-        print(f"Error creating visualization: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error opening browser: {e}")
 
 if __name__ == "__main__":
     main()

@@ -45,7 +45,7 @@ class Perception:
         return base64_image
     
     def process_image(self, image, prompt="What do you see in this image? Describe it in detail."):
-        """Process an image with the VLM and return the description."""
+        """Process image with VLM and return description."""
         base64_image = self.encode_image(image)
         
         # Prepare API request for Ollama
@@ -79,11 +79,11 @@ class Perception:
             
             return description
         except Exception as e:
-            print(f"Error processing image with VLM: {e}")
+            print(f"Error processing image: {e}")
             return f"Error: {str(e)}"
         
     def _preprocess_image(self, image, save_debug=False):
-        """Apply color correction to fix blueish tint."""
+        """Apply color correction to image."""
         if image is None or image.size == 0 or image.ndim != 3 or image.shape[2] != 3:
             return image
             
@@ -138,16 +138,7 @@ class Perception:
             }, f, indent=2)
     
     def detect_objects(self, image, prompt=None):
-        """
-        Detect objects in the image using the vision-language model.
-        
-        Args:
-            image: The image to analyze
-            prompt: Optional custom prompt for detection
-            
-        Returns:
-            List of detected objects with bounding boxes
-        """
+        """Detect objects in the image using the vision-language model."""
         if prompt is None:
             prompt = """Identify all objects in this image and provide their exact locations.
             
@@ -195,7 +186,7 @@ class Perception:
 
             # Skip if bbox is empty or invalid
             if not bbox or len(bbox) != 4:
-                print(f"Skipping object {i}: invalid bbox {bbox}")
+                # Skip invalid bounding boxes
                 continue
 
             # Ensure values are valid
@@ -213,11 +204,11 @@ class Perception:
                 bbox_width = x_max - x_min
                 bbox_height = y_max - y_min
                 if bbox_width > width * 0.5 or bbox_height > height * 0.5:
-                    print(f"Skipping large bbox (likely robot): {bbox}")
+                    # Skip large bounding boxes silently
                     continue
 
             except (ValueError, TypeError) as e:
-                print(f"Error processing bbox {bbox}: {e}")
+                # Skip invalid bounding boxes silently
                 continue
 
             # Draw bounding box
@@ -245,15 +236,7 @@ class Perception:
         return vis_image
     
     def analyze_scene(self, image):
-        """
-        Analyze the scene to identify objects, their relationships, and spatial structure.
-        
-        Args:
-            image: The image to analyze
-            
-        Returns:
-            Dictionary with scene analysis results
-        """
+        """Analyze the scene to identify objects, relationships, and spatial structure."""
         prompt = """Provide a structured analysis of this scene with the following information in JSON format:
         1. "scene_type": The type of environment (e.g., kitchen, office, living room)
         2. "objects": A list of visible objects, each with:
@@ -369,22 +352,14 @@ class Perception:
         return result
     
     def find_books_in_image(self, image):
-        """
-        Find books in the given image with enhanced color correction and robust detection.
-
-        Args:
-            image: Input image as numpy array
-
-        Returns:
-            List of dictionaries with book data
-        """
+        """Find books in the given image with enhanced color correction and robust detection."""
         if image is None or image.size == 0:
             print("Warning: Invalid image provided to find_books_in_image")
             return []
 
         try:
             # Apply color correction to fix blueish tint
-            processed_image = self._preprocess_image(image, save_debug=True)
+            processed_image = self._preprocess_image(image, save_debug=False)
 
             # Enhanced prompt with more specific guidance
             prompt = """
@@ -413,8 +388,9 @@ class Perception:
             print("Attempting primary book detection...")
             books = self.detect_objects(processed_image, prompt)
 
-            # Enhanced debug logging
-            print(f"Raw VLM response: {json.dumps(books, indent=2)}")
+            # Check for valid responses
+            if not books:
+                print("No books found in primary detection")
 
             # Verify and validate detected books
             valid_books = []
@@ -433,9 +409,6 @@ class Perception:
             # If we found valid books, log and visualize them
             if valid_books:
                 print(f"Found {len(valid_books)} valid books")
-                for i, book in enumerate(valid_books):
-                    print(f"Book {i+1}: {book.get('description', 'No description')}")
-                    print(f"  Bbox: {book['bbox']}")
 
                 # Visualize the detections
                 annotated_image = self.visualize_detections(processed_image, valid_books)
@@ -460,7 +433,9 @@ class Perception:
             """
 
             fallback_books = self.detect_objects(processed_image, fallback_prompt)
-            print(f"Fallback detection results: {json.dumps(fallback_books, indent=2)}")
+            # Check fallback results
+            if fallback_books:
+                print(f"Fallback detection found {len(fallback_books)} potential books")
 
             # Validate fallback results
             valid_fallback = []
@@ -477,45 +452,17 @@ class Perception:
                 cv2.imwrite(img_path, annotated_image)
                 return valid_fallback
 
-            # If still no books found, save raw image for debugging
+            # No books found in the image
             print("No books found in image")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            img_path = os.path.join(self.log_dir, f"book_raw_{timestamp}.png")
-            cv2.imwrite(img_path, processed_image)
-            print(f"No valid bbox, saved processed image: {img_path}")
-
-            # Also save the original image for comparison
-            orig_path = os.path.join(self.log_dir, f"book_raw_orig_{timestamp}.png")
-            cv2.imwrite(orig_path, image)
 
             return []
 
         except Exception as e:
             print(f"Error in book detection: {e}")
-            import traceback
-            traceback.print_exc()
-
-            # Save error case image
-            try:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                img_path = os.path.join(self.log_dir, f"book_error_{timestamp}.png")
-                cv2.imwrite(img_path, image)
-                print(f"Error in detection, saved image: {img_path}")
-            except:
-                print("Could not save error image")
-
             return []
     
     def get_book_position(self, book_bbox):
-        """
-        Convert book detection to 3D coordinates with improved reliability.
-        
-        Args:
-            book_bbox: Bounding box of the book [x_min, y_min, x_max, y_max]
-            
-        Returns:
-            3D world position of the book or None if conversion fails
-        """
+        """Convert book detection to 3D coordinates."""
         if not book_bbox or len(book_bbox) != 4:
             return None
         
