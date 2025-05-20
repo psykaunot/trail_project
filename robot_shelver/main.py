@@ -44,8 +44,45 @@ def main():
     sim, agent, locobot, motor_ids, motor_settings, dof_map, camera_controller = setup_simulator()
 
     object_spawner = ObjectSpawner(sim)
-    book_object = object_spawner.spawn_book()
+    # Try to spawn book, with retries if needed
+    for attempt in range(3):
+        book_object = object_spawner.spawn_book()
+        if book_object is not None:
+            # Verify book is at a valid position
+            book_pos = book_object.translation
+            distance = np.linalg.norm(np.array([book_pos[0], book_pos[1], book_pos[2]]))
+            if distance > 20.0:
+                print(f"Warning: Book spawned at suspicious position ({distance:.2f}m from origin)")
+                print("Trying again...")
+                try:
+                    # Remove invalid book
+                    sim.get_rigid_object_manager().remove_object_by_id(book_object.object_id)
+                except Exception as e:
+                    print(f"Error removing invalid book: {e}")
+                continue
+            break
+        else:
+            print(f"Failed to spawn book, attempt {attempt+1}/3")
+    
     print(f"Book object spawned: {book_object is not None}")
+    
+    # Set book to KINEMATIC for stability
+    if book_object is not None:
+        try:
+            # Use the ObjectSpawner's constant for safer access
+            if hasattr(object_spawner, 'HABITAT_MOTION_TYPE_KINEMATIC') and object_spawner.HABITAT_MOTION_TYPE_KINEMATIC is not None:
+                book_object.motion_type = object_spawner.HABITAT_MOTION_TYPE_KINEMATIC
+                print(f"Book motion type set to KINEMATIC for stability")
+            else:
+                # Try importing directly as fallback
+                try:
+                    import habitat_sim
+                    book_object.motion_type = habitat_sim.physics.MotionType.KINEMATIC
+                    print(f"Book motion type set to KINEMATIC (direct import)")
+                except Exception as import_error:
+                    print(f"Warning: Could not import habitat_sim: {import_error}")
+        except Exception as e:
+            print(f"Warning: Could not set book motion type: {e}")
     
     semantic_memory = SemanticMemory(config)
     

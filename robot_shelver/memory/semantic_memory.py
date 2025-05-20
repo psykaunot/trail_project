@@ -160,23 +160,78 @@ if USE_ACTUAL_RAG:
                 
         def load(self, filepath):
             try:
+                # Check if file exists
+                if not os.path.exists(filepath):
+                    print(f"Warning: File {filepath} does not exist. Initializing with empty forest.")
+                    self.nodes = {}
+                    return
+                    
                 with open(filepath, 'r') as f:
                     data = json.load(f)
                 
                 self.nodes = {}
-                for node_id, node_dict in data["nodes"].items():
-                    self.nodes[node_id] = ForestNode(
-                        node_id=node_dict["node_id"],
-                        node_type=node_dict["node_type"],
-                        description=node_dict["description"],
-                        attributes=node_dict["attributes"],
-                        children=node_dict["children"],
-                        parent=node_dict["parent"]
-                    )
                 
+                # Handle different forest data structures
+                # Standard format with 'nodes' key
+                if "nodes" in data:
+                    nodes_data = data["nodes"]
+                    print(f"Loading forest with {len(nodes_data)} nodes from '{filepath}'")
+                    
+                    # Process nodes
+                    for node_id, node_dict in nodes_data.items():
+                        try:
+                            self.nodes[node_id] = ForestNode(
+                                node_id=node_dict["node_id"],
+                                node_type=node_dict["node_type"],
+                                description=node_dict["description"],
+                                attributes=node_dict["attributes"],
+                                children=node_dict["children"],
+                                parent=node_dict["parent"]
+                            )
+                        except KeyError as ke:
+                            print(f"Warning: Missing key in node {node_id}: {ke}")
+                            # Skip this node but continue processing others
+                            continue
+                
+                # Alternative format with 'semantic_forest_nodes' key
+                elif "semantic_forest_nodes" in data:
+                    nodes_data = data["semantic_forest_nodes"]
+                    print(f"Loading forest with {len(nodes_data)} nodes (semantic_forest_nodes format) from '{filepath}'")
+                    
+                    # Process semantic_forest_nodes
+                    for node_id, node_dict in nodes_data.items():
+                        try:
+                            self.nodes[node_id] = ForestNode(
+                                node_id=node_dict["node_id"],
+                                node_type=node_dict["node_type"],
+                                description=node_dict["description"],
+                                attributes=node_dict["attributes"],
+                                children=node_dict["children"],
+                                parent=node_dict["parent"]
+                            )
+                        except KeyError as ke:
+                            print(f"Warning: Missing key in node {node_id}: {ke}")
+                            # Skip this node but continue processing others
+                            continue
+                else:
+                    print(f"Warning: No recognized node structure found in {filepath}. Initializing with empty forest.")
+                    # In this case, we keep the empty self.nodes dictionary
+                
+                # Load clusters if available
                 self.clusters = data.get("clusters", {})
+                
+                print(f"Successfully loaded {len(self.nodes)} nodes from {filepath}")
+                
+            except json.JSONDecodeError as je:
+                print(f"Error decoding JSON from forest file: {je}")
+                # Initialize with empty data rather than failing
+                self.nodes = {}
             except Exception as e:
                 print(f"Error loading forest: {e}")
+                import traceback
+                traceback.print_exc()
+                # Initialize with empty data rather than failing
+                self.nodes = {}
 
 class SemanticMemory:
     """Main semantic memory class for storing and retrieving book information."""
@@ -1627,12 +1682,41 @@ class SemanticMemory:
             return obj
     
     def load(self, filepath: str):
-        """Load forest from disk"""
+        """Load forest from disk with enhanced error handling"""
         try:
-            self.semantic_forest.load(filepath)
-            print(f"Semantic forest loaded from {filepath}")
+            # Check if file exists first
+            if not os.path.exists(filepath):
+                print(f"Warning: Semantic forest file {filepath} not found. Starting with empty forest.")
+                # Initialize with empty forest rather than failing
+                return
+            
+            # Try to load the forest with robust error handling
+            try:
+                self.semantic_forest.load(filepath)
+                # Verify forest loaded correctly
+                try:
+                    nodes = self.semantic_forest.get_all_nodes()
+                    nodes_count = len(nodes) if nodes else 0
+                    print(f"Semantic forest loaded from {filepath} with {nodes_count} nodes")
+                except Exception as nodes_error:
+                    # If nodes are missing, reset the nodes dict to empty
+                    print(f"Warning: Error accessing forest nodes: {nodes_error}")
+                    print("Initializing empty nodes dictionary")
+                    if not hasattr(self.semantic_forest, 'nodes') or self.semantic_forest.nodes is None:
+                        self.semantic_forest.nodes = {}
+                    print(f"Semantic forest loaded from {filepath} with 0 nodes")
+            except Exception as forest_error:
+                # If forest load fails, create a fresh forest
+                print(f"Warning: Could not load semantic forest: {forest_error}")
+                print("Initializing fresh semantic forest")
+                self.semantic_forest = SemanticForest()
         except Exception as e:
-            print(f"Error loading forest: {e}")
+            # Catch-all for any other issues
+            print(f"Error during semantic forest loading process: {e}")
+            import traceback
+            traceback.print_exc()
+            # Create empty forest to allow the agent to function
+            self.semantic_forest = SemanticForest()
     
     def update_robot_position(self, position):
         """Update the robot's position in the semantic forest."""

@@ -139,7 +139,7 @@ class MissionStateMachine:
             
             # Wait for result with proper timeout and exception handling
             try:
-                result = self.controller.result_queue.get(timeout=15.0)  # Allow more time for pick operation
+                result = self.controller.result_queue.get(timeout=60.0)  # Significantly increased timeout for pick operation
                 success = result.get('success', False)
                 print(f"Pick operation {'succeeded' if success else 'failed'}: {result.get('message', '')}")
                 return success
@@ -715,8 +715,9 @@ class Controller:
                 "stream": False
             }
             
-            # Make the API request with timeout
-            response = requests.post(self.api_url, json=payload, timeout=30.0)
+            # Make the API request with increased timeout to prevent timeouts
+            # LLMs can take time to generate complex responses
+            response = requests.post(self.api_url, json=payload, timeout=120.0)  # 2 minute timeout
             response.raise_for_status()
             result = response.json()
             
@@ -982,7 +983,7 @@ class AutonomousBookSearchAgent:
 
         # Wait for result
         try:
-            result = self.result_queue.get(timeout=10.0)
+            result = self.result_queue.get(timeout=60.0)  # Significantly increased timeout for complex actions
 
             # Get camera state from result, not directly
             camera_state = result.get('camera_state', {'pan': 0, 'tilt': 0})
@@ -1011,7 +1012,7 @@ class AutonomousBookSearchAgent:
         })
 
         try:
-            result = self.result_queue.get(timeout=5.0)
+            result = self.result_queue.get(timeout=30.0)  # Significantly increased timeout for book checking
             books = result.get('books', [])
 
             # Get camera state
@@ -1176,7 +1177,7 @@ class AutonomousBookSearchAgent:
                 })
 
                 try:
-                    camera_state = self.result_queue.get(timeout=2.0)
+                    camera_state = self.result_queue.get(timeout=15.0)  # Increased timeout for camera state
                 except queue.Empty:
                     camera_state = {'pan': 0, 'tilt': 0}
             else:
@@ -1207,13 +1208,15 @@ class AutonomousBookSearchAgent:
             }
             # Make the actual API request with timeout
             try:
-                response = requests.post(self.api_url, json=payload, timeout=30.0)
+                # Use significantly increased timeout to prevent timeouts with complex prompts
+                # The default 30s is often not enough for complex reasoning tasks
+                response = requests.post(self.api_url, json=payload, timeout=120.0)  # 2 minute timeout
                 
                 # Check for HTTP errors
                 response.raise_for_status()
             except requests.exceptions.Timeout:
-                print("ERROR: LLM request timed out after 30 seconds. Is Ollama running?")
-                print("TIP: Start Ollama with 'ollama serve' in a separate terminal")
+                print("ERROR: LLM request timed out after 120 seconds. Is Ollama running?")
+                print("TIP: Start Ollama with 'ollama serve' in a separate terminal or try a smaller model")
                 return "ERROR: LLM request timed out. Using fallback behavior."
             except requests.exceptions.ConnectionError:
                 print("ERROR: Connection to Ollama failed. Is the server running at", self.api_url)
